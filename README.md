@@ -1,2 +1,2 @@
-sbt-plugins
+Plugins for SBT (Scala Build Tool)
 ===========

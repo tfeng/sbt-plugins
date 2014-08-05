@@ -1,0 +1,12 @@
+.history
+/*.iml
+/.classpath
+/.idea/
+/.idea_modules/
+/.metadata/
+/.project
+/.settings/
+/RemoteSystemsTempFiles/
+/project/project/
+/project/target/
+/target/
