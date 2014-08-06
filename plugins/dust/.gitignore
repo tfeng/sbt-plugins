@@ -1,3 +1,4 @@
+.cache
 .history
 /*.iml
 /.classpath
@@ -6,6 +7,7 @@
 /.project
 /.settings/
 /dist/
+/node_modules/
 /out/
 /project/project/
 /project/target/

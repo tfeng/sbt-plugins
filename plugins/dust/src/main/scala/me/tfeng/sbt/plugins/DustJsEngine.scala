@@ -1,6 +1,7 @@
 package me.tfeng.sbt.plugins
 
 import java.io.File
+import java.io.InputStream
 
 import sbt._
 
@@ -11,5 +12,5 @@ abstract class DustJsEngine {
 
 trait DustJs[T] {
 
-  def getEngine(dustJs: File): T
+  def getEngine(dustJs: InputStream): T
 }

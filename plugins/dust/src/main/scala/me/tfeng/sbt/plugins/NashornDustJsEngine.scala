@@ -23,9 +23,9 @@ class NashornDustJsEngine(scriptEngine: ScriptEngine, dustFunction: Object) exte
 
 object NashornDustJs extends DustJs[NashornDustJsEngine] {
 
-  def getEngine(dustJs: File): NashornDustJsEngine = {
+  def getEngine(dustJs: InputStream): NashornDustJsEngine = {
     val scriptEngine = new ScriptEngineManager getEngineByName("nashorn")
-    scriptEngine.eval(new InputStreamReader(new FileInputStream(dustJs)))
+    scriptEngine.eval(new InputStreamReader(dustJs))
     new NashornDustJsEngine(scriptEngine, scriptEngine.eval("dust"))
   }
 }
