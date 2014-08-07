@@ -1,22 +1,20 @@
 package me.tfeng.sbt.plugins
 
-import java.io.File
-import sbt._
-import sbt.Keys._
-import com.typesafe.sbt.web.SbtWeb.autoImport._
+import java.nio.charset.Charset
+
+import scala.collection.mutable.Buffer
+
 import org.webjars.WebJarAssetLocator
 import org.webjars.WebJarAssetLocator.WEBJARS_PATH_PREFIX
-import scala.collection.mutable.Buffer
-import java.util.regex.Pattern
-import java.util.ServiceLoader
-import org.webjars.urlprotocols.UrlProtocolHandler
-import org.webjars.urlprotocols.JarUrlProtocolHandler
-import java.nio.charset.Charset
+
+import com.typesafe.sbt.web.SbtWeb.autoImport._
+
+import sbt._
+import sbt.Keys._
 
 object SbtDust extends AutoPlugin {
 
   import SbtDustKeys._
-  import WebKeys._
 
   override lazy val projectSettings = settings
 

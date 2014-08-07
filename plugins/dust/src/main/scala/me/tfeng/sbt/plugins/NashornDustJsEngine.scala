@@ -1,8 +1,8 @@
 package me.tfeng.sbt.plugins
 
-import java.io._
-
-import scala.io.Source
+import java.io.InputStream
+import java.io.InputStreamReader
+import java.nio.charset.Charset
 
 import javax.script._
 import sbt._
@@ -14,7 +14,7 @@ class NashornDustJsEngine(scriptEngine: ScriptEngine, dustFunction: Object) exte
     val invocable = scriptEngine.asInstanceOf[Invocable]
     files.foreach(file => {
       val name = nameGenerator(file)
-      val content = Source.fromFile(file).mkString
+      val content = IO.read(file, Charset.forName("utf8"))
       val js = invocable.invokeMethod(dustFunction, "compile", content, name).asInstanceOf[String]
       writer(name, js)
     })
