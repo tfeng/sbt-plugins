@@ -6,8 +6,7 @@ import Keys._
 object Settings {
   val common: Seq[Setting[_]] = Seq(
     organization := "me.tfeng.sbt-plugins",
-    version := "0.1.1-SNAPSHOT",
-    crossPaths := true
+    version := "0.1.1-SNAPSHOT"
   )
 
   val disablePublishing: Seq[Setting[_]] = Seq(

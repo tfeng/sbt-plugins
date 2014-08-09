@@ -2,4 +2,4 @@ resolvers += "Typesafe repository" at "http://repo.typesafe.com/typesafe/release
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-pgp" % "0.8.3")
 
-addSbtPlugin("com.typesafe.sbt" % "sbt-web" % "1.1.1-SNAPSHOT")
+addSbtPlugin("com.typesafe.sbt" % "sbt-web" % "1.1.0")
