@@ -33,7 +33,8 @@ object SbtDust extends AutoPlugin {
       resourceGenerators in Compile <+= dustToJs,
       mappings in (Compile, packageBin) ++= createWebJarMappings.value,
       unmanagedSourceDirectories in Compile += baseDirectory.value / templatesDirectory.value,
-      managedResourceDirectories in Assets += (classDirectory in Assets).value / templatesDirectory.value)
+      managedResourceDirectories in Assets += (classDirectory in Assets).value / templatesDirectory.value
+  )
 
   object SbtDustKeys {
     lazy val dustToJs = TaskKey[Seq[File]]("dustToJs", "Compile dust templates to js in target folder")
