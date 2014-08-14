@@ -7,8 +7,6 @@ import scala.collection.mutable.Buffer
 import org.webjars.WebJarAssetLocator
 import org.webjars.WebJarAssetLocator.WEBJARS_PATH_PREFIX
 
-import com.typesafe.sbt.web.SbtWeb.autoImport.Assets
-
 import sbt.{AutoPlugin, Compile, Def}
 import sbt.{File, IO}
 import sbt.{SettingKey, TaskKey, filesToFinder, globFilter, rebase, richFile, singleFileFinder}
@@ -35,8 +33,7 @@ object SbtDust extends AutoPlugin {
       dustToJs <<= dustToJsTask,
       resourceGenerators in Compile <+= dustToJs,
       mappings in (Compile, packageBin) ++= createWebJarMappings.value,
-      unmanagedSourceDirectories in Compile += baseDirectory.value / templatesDirectory.value,
-      managedResourceDirectories in Assets += (classDirectory in Assets).value / templatesDirectory.value
+      unmanagedSourceDirectories in Compile += baseDirectory.value / templatesDirectory.value
   )
 
   object SbtDustKeys {
@@ -68,7 +65,7 @@ object SbtDust extends AutoPlugin {
       val dustjs = newClassLoader.getResourceAsStream(webJarAssetLocator.getFullPath(dustJsFileName))
       val dustJsEngine = engines.get(engine.value).get.getEngine(dustjs)
       val prefix = getWebJarsDirectory(moduleName.value, version.value, templatesDirectory.value)
-      val jsDirectory = (classDirectory in Assets).value / prefix
+      val jsDirectory = (classDirectory in Compile).value / prefix
       val all = Buffer[File]()
       val files = dustDirectory.descendantsExcept("*.tl", "").get.filter(
           file => {
@@ -93,7 +90,7 @@ object SbtDust extends AutoPlugin {
 
   private def createWebJarMappings = Def.task {
     val prefix = getWebJarsDirectory(moduleName.value, version.value, templatesDirectory.value)
-    val jsDirectory = (classDirectory in Assets).value / prefix
+    val jsDirectory = (classDirectory in Compile).value / prefix
     jsDirectory.descendantsExcept("*.js", "").get pair rebase(jsDirectory, prefix)
   }
 }
