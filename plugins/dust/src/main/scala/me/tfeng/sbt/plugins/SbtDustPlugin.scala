@@ -7,10 +7,13 @@ import scala.collection.mutable.Buffer
 import org.webjars.WebJarAssetLocator
 import org.webjars.WebJarAssetLocator.WEBJARS_PATH_PREFIX
 
-import com.typesafe.sbt.web.SbtWeb.autoImport._
+import com.typesafe.sbt.web.SbtWeb.autoImport.Assets
 
-import sbt._
-import sbt.Keys._
+import sbt.{AutoPlugin, Compile, Def}
+import sbt.{File, IO}
+import sbt.{SettingKey, TaskKey, filesToFinder, globFilter, rebase, richFile, singleFileFinder}
+import sbt.ConfigKey.configurationToKey
+import sbt.Keys.{baseDirectory, classDirectory, managedResourceDirectories, mappings, moduleName, packageBin, resourceGenerators, streams, unmanagedSourceDirectories, version}
 
 object SbtDust extends AutoPlugin {
 

@@ -1,18 +1,27 @@
 package me.tfeng.sbt.plugins
 
+import java.io.File
 import java.nio.charset.Charset
 
 import scala.collection.JavaConversions
 import scala.collection.mutable.Buffer
+import scala.xml.{Elem, Node}
+import scala.xml.transform.RewriteRule
 
-import org.apache.avro.Protocol
-import org.apache.avro.Schema
+import org.apache.avro.{Protocol, Schema}
 import org.apache.avro.compiler.idl.Idl
 import org.apache.avro.compiler.specific.InternalSpecificCompiler
 import org.apache.avro.generic.GenericData.StringType
 
-import sbt._
-import sbt.Keys._
+import com.typesafe.sbteclipse.core.{Validation, setting}
+import com.typesafe.sbteclipse.core.EclipsePlugin.EclipseKeys.classpathTransformerFactories
+import com.typesafe.sbteclipse.core.EclipsePlugin.EclipseTransformerFactory
+
+import sbt.{AutoPlugin, Compile, Def}
+import sbt.{ProjectRef, SettingKey, State, globFilter, richFile, singleFileFinder, toGroupID}
+import sbt.ConfigKey.configurationToKey
+import sbt.IO
+import sbt.Keys.{baseDirectory, libraryDependencies, managedSourceDirectories, sourceGenerators, streams, target, unmanagedSourceDirectories}
 
 object SbtAvro extends AutoPlugin {
 
@@ -22,6 +31,7 @@ object SbtAvro extends AutoPlugin {
 
   lazy val settings = Seq(
       schemataDirectory  := "schemata",
+      targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / schemataDirectory.value).toString,
       stringType := StringType.String,
       sourceGenerators in Compile ++= Seq(
           compileAvdlTask.taskValue,
@@ -29,15 +39,17 @@ object SbtAvro extends AutoPlugin {
           compileAvprTask.taskValue
       ),
       unmanagedSourceDirectories in Compile += baseDirectory.value / schemataDirectory.value,
-      managedSourceDirectories in Compile += target.value / schemataDirectory.value,
+      managedSourceDirectories in Compile += baseDirectory.value / targetSchemataDirectory.value,
       libraryDependencies ++= Seq(
           "org.apache.avro" % "avro" % Versions.avro,
           "org.apache.avro" % "avro-ipc" % Versions.avro
-      )
+      ),
+      classpathTransformerFactories += addJavaSourceDirectory
   )
 
   object SbtAvroKeys {
     lazy val schemataDirectory = SettingKey[String]("schemata-dir", "Subdirectory under project root containing avro schemata")
+    lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemata")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
   }
 
@@ -96,5 +108,22 @@ object SbtAvro extends AutoPlugin {
       all ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
     })
     all.toSeq
+  }
+
+  private lazy val addJavaSourceDirectory = new EclipseTransformerFactory[RewriteRule] {
+    override def createTransformer(ref: ProjectRef, state: State): Validation[RewriteRule] = {
+      setting(targetSchemataDirectory in ref, state) map { targetSchemataDirectory =>
+        new RewriteRule {
+          override def transform(node: Node): Seq[Node] = node match {
+            case elem if (elem.label == "classpath") =>
+              val newChild = elem.child ++
+                <classpathentry path={ targetSchemataDirectory } kind="src"></classpathentry>
+              Elem(elem.prefix, "classpath", elem.attributes, elem.scope, false, newChild: _*)
+            case other =>
+              other
+          }
+        }
+      }
+    }
   }
 }

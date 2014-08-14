@@ -1,11 +1,10 @@
 package me.tfeng.sbt.plugins
 
-import java.io.InputStream
-import java.io.InputStreamReader
+import java.io.{InputStream, InputStreamReader}
 import java.nio.charset.Charset
 
-import javax.script._
-import sbt._
+import javax.script.{Invocable, ScriptEngine, ScriptEngineManager}
+import sbt.{File, IO}
 
 class NashornDustJsEngine(scriptEngine: ScriptEngine, dustFunction: Object) extends DustJsEngine {
 

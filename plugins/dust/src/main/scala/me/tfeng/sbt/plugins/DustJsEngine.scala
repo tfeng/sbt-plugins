@@ -1,7 +1,6 @@
 package me.tfeng.sbt.plugins
 
-import java.io.File
-import java.io.InputStream
+import java.io.{File, InputStream}
 
 abstract class DustJsEngine {
 
