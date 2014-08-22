@@ -8,5 +8,7 @@ object Versions {
 
   val dustjs = "2.4.0-1"
 
+  val sbtEclipse = "2.5.0"
+
   val sbtWeb = "1.1.0"
 }

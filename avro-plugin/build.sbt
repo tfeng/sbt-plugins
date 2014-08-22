@@ -8,6 +8,6 @@ Settings.common
 
 libraryDependencies += "org.apache.avro" % "avro-compiler" % Versions.avro
 
-addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "2.5.0")
+addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % Versions.sbtEclipse)
 
-unmanagedSourceDirectories in Compile += baseDirectory.value / "../../project"
+unmanagedSourceDirectories in Compile += baseDirectory.value / "../project"
