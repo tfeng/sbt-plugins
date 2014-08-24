@@ -33,10 +33,6 @@ import org.apache.avro.compiler.idl.Idl
 import org.apache.avro.compiler.specific.InternalSpecificCompiler
 import org.apache.avro.generic.GenericData.StringType
 
-import com.typesafe.sbteclipse.core.{Validation, setting}
-import com.typesafe.sbteclipse.core.EclipsePlugin.EclipseKeys.classpathTransformerFactories
-import com.typesafe.sbteclipse.core.EclipsePlugin.EclipseTransformerFactory
-
 import sbt.{AutoPlugin, Compile, Def}
 import sbt.{ProjectRef, SettingKey, State, globFilter, richFile, singleFileFinder, toGroupID}
 import sbt.ConfigKey.configurationToKey
@@ -66,8 +62,9 @@ object SbtAvro extends AutoPlugin {
       libraryDependencies ++= Seq(
           "org.apache.avro" % "avro" % Versions.avro,
           "org.apache.avro" % "avro-ipc" % Versions.avro
-      ),
-      classpathTransformerFactories += addJavaSourceDirectory
+      )
+      // This depends on sbteclipse supporting a sbt 0.13.5.
+      // classpathTransformerFactories += addJavaSourceDirectory
   )
 
   object SbtAvroKeys {
@@ -133,7 +130,8 @@ object SbtAvro extends AutoPlugin {
     all.toSeq
   }
 
-  private lazy val addJavaSourceDirectory = new EclipseTransformerFactory[RewriteRule] {
+  // This depends on sbteclipse supporting a sbt 0.13.5.
+  /* private lazy val addJavaSourceDirectory = new EclipseTransformerFactory[RewriteRule] {
     override def createTransformer(ref: ProjectRef, state: State): Validation[RewriteRule] = {
       setting(targetSchemataDirectory in ref, state) map { targetSchemataDirectory =>
         new RewriteRule {
@@ -148,5 +146,5 @@ object SbtAvro extends AutoPlugin {
         }
       }
     }
-  }
+  } */
 }
