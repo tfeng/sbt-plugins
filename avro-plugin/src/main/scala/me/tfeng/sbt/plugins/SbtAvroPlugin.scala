@@ -52,6 +52,7 @@ object SbtAvro extends AutoPlugin {
       schemataDirectory  := "schemata",
       targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / schemataDirectory.value).toString,
       stringType := StringType.String,
+      specificCompilerClass := "org.apache.avro.compiler.specific.InternalSpecificCompiler",
       sourceGenerators in Compile ++= Seq(
           compileAvdlTask.taskValue,
           compileAvscTask.taskValue,
@@ -71,6 +72,7 @@ object SbtAvro extends AutoPlugin {
     lazy val schemataDirectory = SettingKey[String]("schemata-dir", "Subdirectory under project root containing avro schemata")
     lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemata")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
+    lazy val specificCompilerClass = SettingKey[String]("specific-compiler-class", "Class name of the Avro specific compiler")
   }
 
   private def compileAvdlTask = Def.task {
@@ -86,7 +88,8 @@ object SbtAvro extends AutoPlugin {
         val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
         IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
 
-        val compiler = new InternalSpecificCompiler(protocol)
+        val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Protocol])
+        val compiler = constructor.newInstance(protocol).asInstanceOf[InternalSpecificCompiler]
         compiler.setStringType(stringType.value)
         compiler.compileToDestination(file, destination)
         all ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
@@ -106,7 +109,8 @@ object SbtAvro extends AutoPlugin {
     avscFiles.foreach(file => {
       streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
       val schema = schemaParser.parse(file)
-      val compiler = new InternalSpecificCompiler(schema)
+      val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Schema])
+      val compiler = constructor.newInstance(schema).asInstanceOf[InternalSpecificCompiler]
       compiler.setStringType(stringType.value)
       compiler.compileToDestination(file, destination)
       all ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
@@ -122,7 +126,8 @@ object SbtAvro extends AutoPlugin {
     avprFiles.foreach(file => {
       streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
       val protocol = Protocol.parse(file)
-      val compiler = new InternalSpecificCompiler(protocol)
+      val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Protocol])
+      val compiler = constructor.newInstance(protocol).asInstanceOf[InternalSpecificCompiler]
       compiler.setStringType(stringType.value)
       compiler.compileToDestination(file, destination)
       all ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))

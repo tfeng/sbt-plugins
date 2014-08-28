@@ -21,6 +21,7 @@
 package org.apache.avro.compiler.specific;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -32,6 +33,59 @@ import org.apache.avro.Schema;
  * @author Thomas Feng (huining.feng@gmail.com)
  */
 public class InternalSpecificCompiler extends SpecificCompiler {
+
+  protected static class OutputFile extends SpecificCompiler.OutputFile {
+
+    public static OutputFile ensureOutputFile(SpecificCompiler.OutputFile outputFile) {
+      if (outputFile instanceof OutputFile) {
+        return (OutputFile) outputFile;
+      } else {
+        return new OutputFile(outputFile);
+      }
+    }
+
+    private List<OutputFile> dependentFiles = new ArrayList<>();
+
+    public OutputFile(SpecificCompiler.OutputFile outputFile) {
+      path = outputFile.path;
+      contents = outputFile.contents;
+      outputCharacterEncoding = outputFile.outputCharacterEncoding;
+    }
+
+    public OutputFile(String path, String contents, String outputCharacterEncoding) {
+      this.path = path;
+      this.contents = contents;
+      this.outputCharacterEncoding = outputCharacterEncoding;
+    }
+
+    public OutputFile(String name, String namespace, String contents,
+        String outputCharacterEncoding) {
+      this(makePath(name, namespace), contents, outputCharacterEncoding);
+    }
+
+    public void addDependentFile(SpecificCompiler.OutputFile file) {
+      dependentFiles.add(new OutputFile(file.path, file.contents, file.outputCharacterEncoding));
+    }
+
+    public List<String> getAllPaths() {
+      List<String> paths = new ArrayList<>(dependentFiles.size() + 1);
+      dependentFiles.stream().forEach(file -> paths.addAll(file.getAllPaths()));
+      paths.add(path);
+      return paths;
+    }
+
+    public String getOutputCharacterEncoding() {
+      return outputCharacterEncoding;
+    }
+
+    @Override
+    public File writeToDestination(File src, File destDir) throws IOException {
+      for (OutputFile dependentFile : dependentFiles) {
+        dependentFile.writeToDestination(src, destDir);
+      }
+      return super.writeToDestination(src, destDir);
+    }
+  }
 
   private List<String> paths = new ArrayList<>();
 
@@ -49,12 +103,12 @@ public class InternalSpecificCompiler extends SpecificCompiler {
   }
 
   @Override
-  SpecificCompiler.OutputFile compile(Schema schema) {
+  protected OutputFile compile(Schema schema) {
     ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
     try {
       Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
-      OutputFile file = super.compile(schema);
-      paths.add(file.path);
+      OutputFile file = compileSchemaInternal(schema);
+      paths.addAll(file.getAllPaths());
       return file;
     } finally {
       Thread.currentThread().setContextClassLoader(oldClassLoader);
@@ -62,15 +116,23 @@ public class InternalSpecificCompiler extends SpecificCompiler {
   }
 
   @Override
-  SpecificCompiler.OutputFile compileInterface(Protocol protocol) {
+  protected OutputFile compileInterface(Protocol protocol) {
     ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
     try {
       Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
-      OutputFile file = super.compileInterface(protocol);
-      paths.add(file.path);
+      OutputFile file = compileInterfaceInternal(protocol);
+      paths.addAll(file.getAllPaths());
       return file;
     } finally {
       Thread.currentThread().setContextClassLoader(oldClassLoader);
     }
+  }
+
+  protected OutputFile compileInterfaceInternal(Protocol protocol) {
+    return OutputFile.ensureOutputFile(super.compileInterface(protocol));
+  }
+
+  protected OutputFile compileSchemaInternal(Schema schema) {
+    return OutputFile.ensureOutputFile(super.compile(schema));
   }
 }
