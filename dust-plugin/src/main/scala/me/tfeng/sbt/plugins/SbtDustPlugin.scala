@@ -33,7 +33,6 @@ import sbt.{SettingKey, TaskKey, filesToFinder, globFilter, rebase, richFile, si
 import sbt.ConfigKey.configurationToKey
 import sbt.Keys.{baseDirectory, classDirectory, managedResourceDirectories, mappings, moduleName, packageBin, resourceGenerators, streams, unmanagedSourceDirectories, version}
 
-
 /**
  * @author Thomas Feng (huining.feng@gmail.com)
  */
@@ -53,17 +52,17 @@ object SbtDust extends AutoPlugin {
 
   lazy val settings = Seq(
       engine := Engine.Nashorn,
-      templatesDirectory := "templates",
+      templatesDirectories := Seq("templates"),
       dustToJs <<= dustToJsTask,
       resourceGenerators in Compile <+= dustToJs,
       mappings in (Compile, packageBin) ++= createWebJarMappings.value,
-      unmanagedSourceDirectories in Compile += baseDirectory.value / templatesDirectory.value
+      unmanagedSourceDirectories in Compile ++= templatesDirectories.value.map(templates => baseDirectory.value / templates)
   )
 
   object SbtDustKeys {
     lazy val dustToJs = TaskKey[Seq[File]]("dustToJs", "Compile dust templates to js in target folder")
     lazy val engine = SettingKey[Engine.Value]("engine", "Js engine to use (only Nashorn is supported for now)")
-    lazy val templatesDirectory = SettingKey[String]("templates-dir", "Subdirectory under project root containing dust templates")
+    lazy val templatesDirectories = SettingKey[Seq[String]]("templates-dir", "Subdirectories under project root containing dust templates")
   }
 
   private val renderScript = ("{dust.render(name, JSON.parse(json), function(err, data) {"
@@ -73,9 +72,7 @@ object SbtDust extends AutoPlugin {
       s"${WEBJARS_PATH_PREFIX}/${moduleName}/${version}/" + templatesDirectory
 
   private def dustToJsTask = Def.task {
-    val dustDirectory = baseDirectory.value / templatesDirectory.value
-
-    def getDustTemplateName(dustFile: File) = {
+    def getDustTemplateName(dustDirectory: File, dustFile: File) = {
       val name = dustFile.relativeTo(dustDirectory).get.toString()
       if (name.endsWith(".tl")) name.substring(0, name.length() - 3) else name
     }
@@ -88,33 +85,40 @@ object SbtDust extends AutoPlugin {
       val webJarAssetLocator = new WebJarAssetLocator()
       val dustjs = newClassLoader.getResourceAsStream(webJarAssetLocator.getFullPath(dustJsFileName))
       val dustJsEngine = engines.get(engine.value).get.getEngine(dustjs)
-      val prefix = getWebJarsDirectory(moduleName.value, version.value, templatesDirectory.value)
-      val jsDirectory = (classDirectory in Compile).value / prefix
-      val all = Buffer[File]()
-      val files = dustDirectory.descendantsExcept("*.tl", "").get.filter(
-          file => {
-            val jsFile = new File(jsDirectory, getDustTemplateName(file) + ".js")
-            !jsFile.exists() || jsFile.lastModified() < file.lastModified()
-          })
-      dustJsEngine.compile(files,
-          file => {
-            log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-            getDustTemplateName(file)
-          },
-          (name: String, js: String) => {
-            val file = new File(jsDirectory, name + ".js")
-            IO.write(file, js, Charset.forName("utf8"), false)
-            all += file
-          })
-      all.toSeq
+      val files = Buffer[File]()
+      templatesDirectories.value.map(templates => {
+        val dustDirectory = baseDirectory.value / templates
+        val prefix = getWebJarsDirectory(moduleName.value, version.value, templates)
+        val jsDirectory = (classDirectory in Compile).value / prefix
+        val sources = dustDirectory.descendantsExcept("*.tl", "").get.filter(
+            file => {
+              val jsFile = new File(jsDirectory, getDustTemplateName(dustDirectory, file) + ".js")
+              !jsFile.exists() || jsFile.lastModified() < file.lastModified()
+            })
+        dustJsEngine.compile(sources,
+            file => {
+              log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+              getDustTemplateName(dustDirectory, file)
+            },
+            (name: String, js: String) => {
+              val file = new File(jsDirectory, name + ".js")
+              IO.write(file, js, Charset.forName("utf8"), false)
+              files += file
+            })
+      })
+      files.toSeq
     } finally {
       Thread.currentThread().setContextClassLoader(oldClassLoader)
     }
   }
 
   private def createWebJarMappings = Def.task {
-    val prefix = getWebJarsDirectory(moduleName.value, version.value, templatesDirectory.value)
-    val jsDirectory = (classDirectory in Compile).value / prefix
-    jsDirectory.descendantsExcept("*.js", "").get pair rebase(jsDirectory, prefix)
+    val mappings = Buffer[(File, String)]()
+    templatesDirectories.value.map(templates => {
+      val prefix = getWebJarsDirectory(moduleName.value, version.value, "")
+      val jsDirectory = (classDirectory in Compile).value / prefix
+      mappings ++= jsDirectory.descendantsExcept("*.js", "").get pair rebase(jsDirectory, prefix)
+    })
+    mappings.toSeq
   }
 }

@@ -25,18 +25,16 @@ import java.nio.charset.Charset
 
 import scala.collection.JavaConversions
 import scala.collection.mutable.Buffer
-import scala.xml.{Elem, Node}
-import scala.xml.transform.RewriteRule
 
 import org.apache.avro.{Protocol, Schema}
 import org.apache.avro.compiler.idl.Idl
 import org.apache.avro.compiler.specific.InternalSpecificCompiler
 import org.apache.avro.generic.GenericData.StringType
 
-import sbt.{AutoPlugin, Compile, Def}
-import sbt.{ProjectRef, SettingKey, State, globFilter, richFile, singleFileFinder, toGroupID}
+import sbt.{AutoPlugin, Compile}
+import sbt.{SettingKey, globFilter, richFile, singleFileFinder, toGroupID}
 import sbt.ConfigKey.configurationToKey
-import sbt.IO
+import sbt.{Def, IO}
 import sbt.Keys.{baseDirectory, libraryDependencies, managedSourceDirectories, sourceGenerators, streams, target, unmanagedSourceDirectories}
 
 /**
@@ -49,16 +47,16 @@ object SbtAvro extends AutoPlugin {
   override lazy val projectSettings = settings
 
   lazy val settings = Seq(
-      schemataDirectory  := "schemata",
-      targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / schemataDirectory.value).toString,
-      stringType := StringType.String,
+      schemataDirectories := Seq("schemata"),
+      targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
+      stringType := StringType.CharSequence,
       specificCompilerClass := "org.apache.avro.compiler.specific.InternalSpecificCompiler",
       sourceGenerators in Compile ++= Seq(
           compileAvdlTask.taskValue,
           compileAvscTask.taskValue,
           compileAvprTask.taskValue
       ),
-      unmanagedSourceDirectories in Compile += baseDirectory.value / schemataDirectory.value,
+      unmanagedSourceDirectories in Compile ++= schemataDirectories.value.map(schemata => baseDirectory.value / schemata),
       managedSourceDirectories in Compile += baseDirectory.value / targetSchemataDirectory.value,
       libraryDependencies ++= Seq(
           "org.apache.avro" % "avro" % Versions.avro,
@@ -69,70 +67,76 @@ object SbtAvro extends AutoPlugin {
   )
 
   object SbtAvroKeys {
-    lazy val schemataDirectory = SettingKey[String]("schemata-dir", "Subdirectory under project root containing avro schemata")
-    lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemata")
+    lazy val schemataDirectories = SettingKey[Seq[String]]("schemata-dir", "Subdirectories under project root containing avro schemas")
+    lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemas")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
     lazy val specificCompilerClass = SettingKey[String]("specific-compiler-class", "Class name of the Avro specific compiler")
   }
 
   private def compileAvdlTask = Def.task {
-    val source = baseDirectory.value / schemataDirectory.value
-    val destination = target.value / schemataDirectory.value
-    val avdlFiles = (source ** "*.avdl").get
-    val all = Buffer[File]()
-    avdlFiles.foreach(file => {
-      val idl = new Idl(file)
-      try {
-        streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-        val protocol = idl.CompilationUnit()
-        val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
-        IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
+    val destination = baseDirectory.value / targetSchemataDirectory.value
+    val files = Buffer[File]()
+    schemataDirectories.value.map(schemata => {
+      val source = baseDirectory.value / schemata
+      val avdlFiles = (source ** "*.avdl").get
+      avdlFiles.foreach(file => {
+        val idl = new Idl(file)
+        try {
+          streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+          val protocol = idl.CompilationUnit()
+          val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
+          IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
 
+          val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Protocol])
+          val compiler = constructor.newInstance(protocol).asInstanceOf[InternalSpecificCompiler]
+          compiler.setStringType(stringType.value)
+          compiler.compileToDestination(file, destination)
+          files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+        } finally {
+          idl.close()
+        }
+      })
+    })
+    files.toSeq
+  }
+
+  private def compileAvscTask = Def.task {
+    val destination = baseDirectory.value / targetSchemataDirectory.value
+    val schemaParser = new Schema.Parser()
+    val files = Buffer[File]()
+    schemataDirectories.value.map(schemata => {
+      val source = baseDirectory.value / schemata
+      val avscFiles = (source ** "*.avsc").get
+      avscFiles.foreach(file => {
+        streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+        val schema = schemaParser.parse(file)
+        val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Schema])
+        val compiler = constructor.newInstance(schema).asInstanceOf[InternalSpecificCompiler]
+        compiler.setStringType(stringType.value)
+        compiler.compileToDestination(file, destination)
+        files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+      })
+    })
+    files.toSeq
+  }
+
+  private def compileAvprTask = Def.task {
+    val destination = baseDirectory.value / targetSchemataDirectory.value
+    val files = Buffer[File]()
+    schemataDirectories.value.map(schemata => {
+      val source = baseDirectory.value / schemata
+      val avprFiles = (source ** "*.avpr").get
+      avprFiles.foreach(file => {
+        streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+        val protocol = Protocol.parse(file)
         val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Protocol])
         val compiler = constructor.newInstance(protocol).asInstanceOf[InternalSpecificCompiler]
         compiler.setStringType(stringType.value)
         compiler.compileToDestination(file, destination)
-        all ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
-      } finally {
-        idl.close()
-      }
+        files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+      })
     })
-    all.toSeq
-  }
-
-  private def compileAvscTask = Def.task {
-    val source = baseDirectory.value / schemataDirectory.value
-    val destination = target.value / schemataDirectory.value
-    val avscFiles = (source ** "*.avsc").get
-    val schemaParser = new Schema.Parser()
-    val all = Buffer[File]()
-    avscFiles.foreach(file => {
-      streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-      val schema = schemaParser.parse(file)
-      val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Schema])
-      val compiler = constructor.newInstance(schema).asInstanceOf[InternalSpecificCompiler]
-      compiler.setStringType(stringType.value)
-      compiler.compileToDestination(file, destination)
-      all ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
-    })
-    all.toSeq
-  }
-
-  private def compileAvprTask = Def.task {
-    val source = baseDirectory.value / schemataDirectory.value
-    val destination = target.value / schemataDirectory.value
-    val avprFiles = (source ** "*.avpr").get
-    val all = Buffer[File]()
-    avprFiles.foreach(file => {
-      streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-      val protocol = Protocol.parse(file)
-      val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Protocol])
-      val compiler = constructor.newInstance(protocol).asInstanceOf[InternalSpecificCompiler]
-      compiler.setStringType(stringType.value)
-      compiler.compileToDestination(file, destination)
-      all ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
-    })
-    all.toSeq
+    files.toSeq
   }
 
   // This depends on sbteclipse supporting a sbt 0.13.5.
