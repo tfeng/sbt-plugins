@@ -2,7 +2,7 @@ package me.tfeng.sbt.plugins
 
 object Versions {
 
-  val project = "0.1.5-SNAPSHOT"
+  val project = "0.1.5"
 
   val avro = "1.7.7"
 
