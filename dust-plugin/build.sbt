@@ -6,6 +6,7 @@ sbtPlugin := true
 
 Settings.common
 
-addSbtPlugin("com.typesafe.sbt" % "sbt-web" % Versions.sbtWeb)
-
-libraryDependencies += "org.webjars" % "dustjs-linkedin" % Versions.dustjs
+libraryDependencies ++= Seq(
+  "org.webjars" % "webjars-locator" % Versions.webjarsLocator,
+  "org.webjars" % "dustjs-linkedin" % Versions.dustjs
+)
