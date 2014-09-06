@@ -74,11 +74,18 @@ public class ProtocolClientGenerator extends SpecificCompiler {
   }
 
   public void renderTemplate(Writer writer) {
-    VelocityContext context = new VelocityContext();
-    context.put("protocol", protocol);
-    context.put("this", this);
+    ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
+    try {
+      Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
 
-    Template template = VELOCITY_ENGINE.getTemplate(TEMPLATE);
-    template.merge(context, writer);
+      VelocityContext context = new VelocityContext();
+      context.put("protocol", protocol);
+      context.put("this", this);
+
+      Template template = VELOCITY_ENGINE.getTemplate(TEMPLATE);
+      template.merge(context, writer);
+    } finally {
+      Thread.currentThread().setContextClassLoader(oldClassLoader);
+    }
   }
 }
