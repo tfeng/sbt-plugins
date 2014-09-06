@@ -1,0 +1,26 @@
+#if ($protocol.getNamespace())
+package $protocol.getNamespace();
+#end
+
+public interface $this.mangle($protocol.getName())Client {
+
+  public static final org.apache.avro.Protocol PROTOCOL = org.apache.avro.Protocol.parse(${this.javaSplit($protocol.toString())});
+
+#foreach ($e in $protocol.getMessages().entrySet())
+#set ($name = $e.getKey())
+#set ($message = $e.getValue())
+#set ($response = $message.getResponse())
+#if ($message.getDoc())
+  /** $this.escapeForJavadoc($message.getDoc()) */
+#end
+#foreach ($annotation in $this.javaAnnotations($message))
+  @$annotation
+#end
+  play.libs.F.Promise<#if ($message.isOneWay())java.lang.Void#else${this.javaType($response)}#end>##
+ ${this.mangle($name)}(##
+#foreach ($p in $message.getRequest().getFields())##
+#*      *#${this.javaUnbox($p.schema())} ${this.mangle($p.name())}#if ($velocityHasNext), #end
+#end
+);
+#end## (requests)
+}

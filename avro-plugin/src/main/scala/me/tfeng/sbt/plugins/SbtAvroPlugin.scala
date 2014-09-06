@@ -28,9 +28,8 @@ import scala.collection.mutable.Buffer
 
 import org.apache.avro.{Protocol, Schema}
 import org.apache.avro.compiler.idl.Idl
-import org.apache.avro.compiler.specific.InternalSpecificCompiler
+import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
 import org.apache.avro.generic.GenericData.StringType
-
 import sbt.{AutoPlugin, Compile}
 import sbt.{SettingKey, globFilter, richFile, singleFileFinder, toGroupID}
 import sbt.ConfigKey.configurationToKey
@@ -92,6 +91,9 @@ object SbtAvro extends AutoPlugin {
           compiler.setStringType(stringType.value)
           compiler.compileToDestination(file, destination)
           files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+
+          val generator = new ProtocolClientGenerator(protocol, destination)
+          files += generator.generate()
         } finally {
           idl.close()
         }
@@ -134,6 +136,9 @@ object SbtAvro extends AutoPlugin {
         compiler.setStringType(stringType.value)
         compiler.compileToDestination(file, destination)
         files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+
+        val generator = new ProtocolClientGenerator(protocol, destination)
+        files += generator.generate()
       })
     })
     files.toSeq
