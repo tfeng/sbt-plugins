@@ -27,11 +27,10 @@ import scala.collection.mutable.Buffer
 import org.webjars.WebJarAssetLocator
 import org.webjars.WebJarAssetLocator.WEBJARS_PATH_PREFIX
 
-import sbt.{AutoPlugin, Compile, Def}
-import sbt.{File, IO}
-import sbt.{SettingKey, TaskKey, filesToFinder, globFilter, rebase, richFile, singleFileFinder}
+import sbt.{AutoPlugin, Compile, Def, File, IO, SettingKey, TaskKey, filesToFinder, globFilter, rebase, richFile, singleFileFinder}
 import sbt.ConfigKey.configurationToKey
-import sbt.Keys.{baseDirectory, classDirectory, managedResourceDirectories, mappings, moduleName, packageBin, resourceGenerators, streams, unmanagedSourceDirectories, version}
+import sbt.Keys.{baseDirectory, classDirectory, mappings, moduleName, packageBin, resourceGenerators, streams, unmanagedSourceDirectories, version}
+import sbt.Project.inConfig
 
 /**
  * @author Thomas Feng (huining.feng@gmail.com)
@@ -50,14 +49,14 @@ object SbtDust extends AutoPlugin {
 
   val dustJsFileName = "dust-full.min.js"
 
-  lazy val settings = Seq(
+  lazy val settings = inConfig(Compile)(Seq(
       engine := Engine.Nashorn,
       templatesDirectories := Seq("templates"),
       dustToJs <<= dustToJsTask,
-      resourceGenerators in Compile <+= dustToJs,
-      mappings in (Compile, packageBin) ++= createWebJarMappings.value,
-      unmanagedSourceDirectories in Compile ++= templatesDirectories.value.map(templates => baseDirectory.value / templates)
-  )
+      resourceGenerators <+= dustToJs,
+      mappings in packageBin ++= createWebJarMappings.value,
+      unmanagedSourceDirectories ++= templatesDirectories.value.map(templates => baseDirectory.value / templates)
+  ))
 
   object SbtDustKeys {
     lazy val dustToJs = TaskKey[Seq[File]]("dustToJs", "Compile dust templates to js in target folder")
@@ -89,7 +88,7 @@ object SbtDust extends AutoPlugin {
       templatesDirectories.value.map(templates => {
         val dustDirectory = baseDirectory.value / templates
         val prefix = getWebJarsDirectory(moduleName.value, version.value, templates)
-        val jsDirectory = (classDirectory in Compile).value / prefix
+        val jsDirectory = classDirectory.value / prefix
         val sources = dustDirectory.descendantsExcept("*.tl", "").get.filter(
             file => {
               val jsFile = new File(jsDirectory, getDustTemplateName(dustDirectory, file) + ".js")
@@ -116,7 +115,7 @@ object SbtDust extends AutoPlugin {
     val mappings = Buffer[(File, String)]()
     templatesDirectories.value.map(templates => {
       val prefix = getWebJarsDirectory(moduleName.value, version.value, templates)
-      val jsDirectory = (classDirectory in Compile).value / prefix
+      val jsDirectory = classDirectory.value / prefix
       mappings ++= jsDirectory.descendantsExcept("*.js", "").get pair rebase(jsDirectory, prefix)
     })
     mappings.toSeq

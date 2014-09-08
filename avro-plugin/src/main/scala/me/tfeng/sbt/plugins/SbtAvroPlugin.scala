@@ -22,17 +22,15 @@ package me.tfeng.sbt.plugins
 
 import java.io.File
 import java.nio.charset.Charset
-
 import scala.collection.JavaConversions
 import scala.collection.mutable.Buffer
-
 import org.apache.avro.{Protocol, Schema}
 import org.apache.avro.compiler.idl.Idl
 import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
 import org.apache.avro.generic.GenericData.StringType
-import sbt.{AutoPlugin, Compile, Def, IO, SettingKey, globFilter, richFile, singleFileFinder, toGroupID}
-import sbt.ConfigKey.configurationToKey
-import sbt.Keys.{baseDirectory, libraryDependencies, sourceGenerators, mappings, packageSrc, streams, target, unmanagedSourceDirectories}
+import sbt.{AutoPlugin, Compile, Def, IO, SettingKey, Test, filesToFinder, globFilter, rebase, richFile, singleFileFinder, toGroupID}
+import sbt.Keys.{baseDirectory, libraryDependencies, sourceGenerators, managedSourceDirectories, mappings, packageSrc, streams, target, unmanagedSourceDirectories}
+import sbt.Project.inConfig
 
 /**
  * @author Thomas Feng (huining.feng@gmail.com)
@@ -43,26 +41,30 @@ object SbtAvro extends AutoPlugin {
 
   override lazy val projectSettings = settings
 
-  lazy val settings = Seq(
-      schemataDirectories := Seq("schemata"),
-      targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
-      stringType := StringType.CharSequence,
-      specificCompilerClass := "org.apache.avro.compiler.specific.InternalSpecificCompiler",
-      mappings in (Compile, packageSrc) ++= createSourceMappings.value,
-      packageSrc in Compile <<= packageSrc in Compile dependsOn(compileAvdlTask, compileAvscTask, compileAvprTask),
-      libraryDependencies ++= Seq(
-          "org.apache.avro" % "avro" % Versions.avro,
-          "org.apache.avro" % "avro-ipc" % Versions.avro
-      ),
-      sourceGenerators in Compile ++= Seq(
-          compileAvdlTask.taskValue,
-          compileAvscTask.taskValue,
-          compileAvprTask.taskValue
-      ),
-      unmanagedSourceDirectories in Compile ++=
-        schemataDirectories.value.map(schemata => baseDirectory.value / schemata)
-        ++ Seq(baseDirectory.value / targetSchemataDirectory.value)
-  )
+  lazy val settings =
+    Seq(
+        stringType := StringType.CharSequence,
+        specificCompilerClass := "org.apache.avro.compiler.specific.InternalSpecificCompiler",
+        libraryDependencies ++= Seq(
+            "org.apache.avro" % "avro" % Versions.avro,
+            "org.apache.avro" % "avro-ipc" % Versions.avro)
+    ) ++
+    inConfig(Compile)(Seq(
+        schemataDirectories := Seq("schemata"),
+        targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
+        mappings in packageSrc ++= createSourceMappings.value,
+        packageSrc <<= packageSrc dependsOn(compileAvdlTask, compileAvscTask, compileAvprTask),
+        sourceGenerators ++= Seq(compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
+        unmanagedSourceDirectories ++=
+          schemataDirectories.value.map(schemata => baseDirectory.value / schemata) ++
+          Seq(baseDirectory.value / targetSchemataDirectory.value)
+    )) ++
+    inConfig(Test)(Seq(
+        schemataDirectories := Seq("test/resources/schemata"),
+        targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "test-schemata").toString,
+        sourceGenerators ++= Seq(compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
+        managedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value
+    ))
 
   object SbtAvroKeys {
     lazy val schemataDirectories = SettingKey[Seq[String]]("schemata-dir", "Subdirectories under project root containing avro schemas")
@@ -151,6 +153,6 @@ object SbtAvro extends AutoPlugin {
 
   private def createSourceMappings = Def.task {
     val directory = baseDirectory.value / targetSchemataDirectory.value
-    directory.descendantsExcept("*.java", "").get.map(f => (f, f.relativeTo(directory).get.toString()))
+    directory.descendantsExcept("*.java", "").get pair rebase(directory, "")
   }
 }
