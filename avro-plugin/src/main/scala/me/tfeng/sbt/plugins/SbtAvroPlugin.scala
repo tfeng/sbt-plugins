@@ -77,6 +77,7 @@ object SbtAvro extends AutoPlugin {
     this.synchronized {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val files = Buffer[File]()
+      destination.mkdirs()
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
         val avdlFiles = (source ** "*.avdl").get
@@ -110,6 +111,7 @@ object SbtAvro extends AutoPlugin {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val schemaParser = new Schema.Parser()
       val files = Buffer[File]()
+      destination.mkdirs()
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
         val avscFiles = (source ** "*.avsc").get
@@ -131,6 +133,7 @@ object SbtAvro extends AutoPlugin {
     this.synchronized {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val files = Buffer[File]()
+      destination.mkdirs()
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
         val avprFiles = (source ** "*.avpr").get
