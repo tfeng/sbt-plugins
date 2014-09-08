@@ -115,7 +115,7 @@ object SbtDust extends AutoPlugin {
   private def createWebJarMappings = Def.task {
     val mappings = Buffer[(File, String)]()
     templatesDirectories.value.map(templates => {
-      val prefix = getWebJarsDirectory(moduleName.value, version.value, "")
+      val prefix = getWebJarsDirectory(moduleName.value, version.value, templates)
       val jsDirectory = (classDirectory in Compile).value / prefix
       mappings ++= jsDirectory.descendantsExcept("*.js", "").get pair rebase(jsDirectory, prefix)
     })
