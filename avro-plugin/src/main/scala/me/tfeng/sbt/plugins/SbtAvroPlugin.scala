@@ -29,7 +29,7 @@ import org.apache.avro.compiler.idl.Idl
 import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
 import org.apache.avro.generic.GenericData.StringType
 import sbt.{AutoPlugin, Compile, Def, IO, SettingKey, Test, filesToFinder, globFilter, rebase, richFile, singleFileFinder, toGroupID}
-import sbt.Keys.{baseDirectory, libraryDependencies, sourceGenerators, managedSourceDirectories, mappings, packageSrc, streams, target, unmanagedSourceDirectories}
+import sbt.Keys.{baseDirectory, libraryDependencies, sourceGenerators, mappings, packageSrc, streams, target, unmanagedSourceDirectories}
 import sbt.Project.inConfig
 
 /**
@@ -63,7 +63,7 @@ object SbtAvro extends AutoPlugin {
         schemataDirectories := Seq("test/resources/schemata"),
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "test-schemata").toString,
         sourceGenerators ++= Seq(compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
-        managedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value
+        unmanagedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value
     ))
 
   object SbtAvroKeys {
