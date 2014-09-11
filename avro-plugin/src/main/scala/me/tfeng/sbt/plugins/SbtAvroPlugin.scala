@@ -54,7 +54,7 @@ object SbtAvro extends AutoPlugin {
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
         mappings in packageSrc ++= createSourceMappings.value,
         packageSrc <<= packageSrc dependsOn(compileAvdlTask, compileAvscTask, compileAvprTask),
-        sourceGenerators ++= Seq(compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
+        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
         unmanagedSourceDirectories ++=
           schemataDirectories.value.map(schemata => baseDirectory.value / schemata) ++
           Seq(baseDirectory.value / targetSchemataDirectory.value)
@@ -62,7 +62,7 @@ object SbtAvro extends AutoPlugin {
     inConfig(Test)(Seq(
         schemataDirectories := Seq("test/resources/schemata"),
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "test-schemata").toString,
-        sourceGenerators ++= Seq(compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
+        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
         unmanagedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value
     ))
 
@@ -73,11 +73,18 @@ object SbtAvro extends AutoPlugin {
     lazy val specificCompilerClass = SettingKey[String]("specific-compiler-class", "Class name of the Avro specific compiler")
   }
 
+  private def mkTargetDirectory = Def.task {
+    this.synchronized {
+      (baseDirectory.value / (targetSchemataDirectory in Compile).value).mkdirs()
+      (baseDirectory.value / (targetSchemataDirectory in Test).value).mkdirs()
+      Seq.empty[File]
+    }
+  }
+
   private def compileAvdlTask = Def.task {
     this.synchronized {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val files = Buffer[File]()
-      destination.mkdirs()
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
         val avdlFiles = (source ** "*.avdl").get
@@ -111,7 +118,6 @@ object SbtAvro extends AutoPlugin {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val schemaParser = new Schema.Parser()
       val files = Buffer[File]()
-      destination.mkdirs()
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
         val avscFiles = (source ** "*.avsc").get
@@ -133,7 +139,6 @@ object SbtAvro extends AutoPlugin {
     this.synchronized {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val files = Buffer[File]()
-      destination.mkdirs()
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
         val avprFiles = (source ** "*.avpr").get
