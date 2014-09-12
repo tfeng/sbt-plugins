@@ -88,18 +88,34 @@ public class InternalSpecificCompiler extends SpecificCompiler {
   }
 
   private List<String> paths = new ArrayList<>();
+  private Protocol protocol;
+  private Schema schema;
 
   public InternalSpecificCompiler(Protocol protocol) {
     super(protocol);
+    this.protocol = protocol;
   }
 
   public InternalSpecificCompiler(Schema schema) {
     super(schema);
+    this.schema = schema;
   }
 
   public List<File> getFiles(File destinationDirectory) {
     return paths.stream().map(path -> new File(destinationDirectory, path))
         .collect(Collectors.toList());
+  }
+
+  public File getOutputFile(File targetDirectory) {
+    if (protocol != null) {
+      String mangledName = mangle(protocol.getName());
+      String path = makePath(mangledName, protocol.getNamespace());
+      return new File(targetDirectory, path);
+    } else {
+      String mangledName = mangle(schema.getName());
+      String path = makePath(mangledName, schema.getNamespace());
+      return new File(targetDirectory, path);
+    }
   }
 
   @Override

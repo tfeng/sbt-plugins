@@ -44,7 +44,6 @@ object SbtAvro extends AutoPlugin {
   lazy val settings =
     Seq(
         stringType := StringType.CharSequence,
-        specificCompilerClass := "org.apache.avro.compiler.specific.InternalSpecificCompiler",
         libraryDependencies ++= Seq(
             "org.apache.avro" % "avro" % Versions.avro,
             "org.apache.avro" % "avro-ipc" % Versions.avro)
@@ -70,7 +69,6 @@ object SbtAvro extends AutoPlugin {
     lazy val schemataDirectories = SettingKey[Seq[String]]("schemata-dir", "Subdirectories under project root containing avro schemas")
     lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemas")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
-    lazy val specificCompilerClass = SettingKey[String]("specific-compiler-class", "Class name of the Avro specific compiler")
   }
 
   private def mkTargetDirectory = Def.task {
@@ -91,19 +89,21 @@ object SbtAvro extends AutoPlugin {
         avdlFiles.foreach(file => {
           val idl = new Idl(file)
           try {
-            streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
             val protocol = idl.CompilationUnit()
-            val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
-            IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
+            val compiler = new InternalSpecificCompiler(protocol)
+            val output = compiler.getOutputFile(destination)
+            if (!output.exists() || output.lastModified() < file.lastModified()) {
+              streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+              val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
+              IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
 
-            val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Protocol])
-            val compiler = constructor.newInstance(protocol).asInstanceOf[InternalSpecificCompiler]
-            compiler.setStringType(stringType.value)
-            compiler.compileToDestination(file, destination)
-            files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+              compiler.setStringType(stringType.value)
+              compiler.compileToDestination(file, destination)
+              files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
 
-            val generator = new ProtocolClientGenerator(protocol, destination)
-            files += generator.generate()
+              val generator = new ProtocolClientGenerator(protocol, destination)
+              files += generator.generate()
+            }
           } finally {
             idl.close()
           }
@@ -122,13 +122,15 @@ object SbtAvro extends AutoPlugin {
         val source = baseDirectory.value / schemata
         val avscFiles = (source ** "*.avsc").get
         avscFiles.foreach(file => {
-          streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
           val schema = schemaParser.parse(file)
-          val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Schema])
-          val compiler = constructor.newInstance(schema).asInstanceOf[InternalSpecificCompiler]
-          compiler.setStringType(stringType.value)
-          compiler.compileToDestination(file, destination)
-          files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+          val compiler = new InternalSpecificCompiler(schema)
+          val output = compiler.getOutputFile(destination)
+          if (!output.exists() || output.lastModified() < file.lastModified()) {
+            streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+            compiler.setStringType(stringType.value)
+            compiler.compileToDestination(file, destination)
+            files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+          }
         })
       })
       files.toSeq
@@ -143,16 +145,18 @@ object SbtAvro extends AutoPlugin {
         val source = baseDirectory.value / schemata
         val avprFiles = (source ** "*.avpr").get
         avprFiles.foreach(file => {
-          streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
           val protocol = Protocol.parse(file)
-          val constructor = Class.forName(specificCompilerClass.value).getConstructor(classOf[Protocol])
-          val compiler = constructor.newInstance(protocol).asInstanceOf[InternalSpecificCompiler]
-          compiler.setStringType(stringType.value)
-          compiler.compileToDestination(file, destination)
-          files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+          val compiler = new InternalSpecificCompiler(protocol)
+          val output = compiler.getOutputFile(destination)
+          if (!output.exists() || output.lastModified() < file.lastModified()) {
+            streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+            compiler.setStringType(stringType.value)
+            compiler.compileToDestination(file, destination)
+            files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
 
-          val generator = new ProtocolClientGenerator(protocol, destination)
-          files += generator.generate()
+            val generator = new ProtocolClientGenerator(protocol, destination)
+            files += generator.generate()
+          }
         })
       })
       files.toSeq
