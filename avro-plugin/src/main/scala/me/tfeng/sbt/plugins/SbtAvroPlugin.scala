@@ -94,16 +94,16 @@ object SbtAvro extends AutoPlugin {
             val output = compiler.getOutputFile(destination)
             if (!output.exists() || output.lastModified() < file.lastModified()) {
               streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-              val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
-              IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
-
-              compiler.setStringType(stringType.value)
-              compiler.compileToDestination(file, destination)
-              files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
-
-              val generator = new ProtocolClientGenerator(protocol, destination)
-              files += generator.generate()
             }
+            val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
+            IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
+
+            compiler.setStringType(stringType.value)
+            compiler.compileToDestination(file, destination)
+            files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+
+            val generator = new ProtocolClientGenerator(protocol, destination)
+            files += generator.generate()
           } finally {
             idl.close()
           }
@@ -127,10 +127,10 @@ object SbtAvro extends AutoPlugin {
           val output = compiler.getOutputFile(destination)
           if (!output.exists() || output.lastModified() < file.lastModified()) {
             streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-            compiler.setStringType(stringType.value)
-            compiler.compileToDestination(file, destination)
-            files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
           }
+          compiler.setStringType(stringType.value)
+          compiler.compileToDestination(file, destination)
+          files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
         })
       })
       files.toSeq
@@ -150,13 +150,13 @@ object SbtAvro extends AutoPlugin {
           val output = compiler.getOutputFile(destination)
           if (!output.exists() || output.lastModified() < file.lastModified()) {
             streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-            compiler.setStringType(stringType.value)
-            compiler.compileToDestination(file, destination)
-            files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
-
-            val generator = new ProtocolClientGenerator(protocol, destination)
-            files += generator.generate()
           }
+          compiler.setStringType(stringType.value)
+          compiler.compileToDestination(file, destination)
+          files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+
+          val generator = new ProtocolClientGenerator(protocol, destination)
+          files += generator.generate()
         })
       })
       files.toSeq
