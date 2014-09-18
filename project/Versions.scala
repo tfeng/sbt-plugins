@@ -2,11 +2,11 @@ package me.tfeng.sbt.plugins
 
 object Versions {
 
-  val project = "0.1.9"
+  val project = "0.2.0-SNAPSHOT"
 
   val avro = "1.7.7"
 
   val dustjs = "2.4.0-1"
 
-  val webjarsLocator = "0.17"
+  val webjarsLocator = "0.18"
 }
