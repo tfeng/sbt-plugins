@@ -24,7 +24,7 @@ import java.io.File
 import java.nio.charset.Charset
 import scala.collection.JavaConversions
 import scala.collection.mutable.Buffer
-import org.apache.avro.{Protocol, Schema}
+import org.apache.avro.{Protocol, Schema, SchemaUtils}
 import org.apache.avro.compiler.idl.Idl
 import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
 import org.apache.avro.generic.GenericData.StringType
@@ -116,11 +116,12 @@ object SbtAvro extends AutoPlugin {
   private def compileAvscTask = Def.task {
     this.synchronized {
       val destination = baseDirectory.value / targetSchemataDirectory.value
-      val schemaParser = new Schema.Parser()
       val files = Buffer[File]()
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
-        val avscFiles = (source ** "*.avsc").get
+        val avscFiles = JavaConversions.asScalaBuffer(SchemaUtils.sortSchemas(
+            JavaConversions.asJavaList((source ** "*.avsc").get)))
+        val schemaParser = new Schema.Parser()
         avscFiles.foreach(file => {
           val schema = schemaParser.parse(file)
           val compiler = new InternalSpecificCompiler(schema)
