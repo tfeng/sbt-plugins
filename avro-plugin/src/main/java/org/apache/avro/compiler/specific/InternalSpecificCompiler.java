@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.avro.Protocol;
@@ -45,6 +46,9 @@ public class InternalSpecificCompiler extends SpecificCompiler {
     }
 
     private List<OutputFile> dependentFiles = new ArrayList<>();
+
+    public OutputFile() {
+    }
 
     public OutputFile(SpecificCompiler.OutputFile outputFile) {
       path = outputFile.path;
@@ -80,6 +84,9 @@ public class InternalSpecificCompiler extends SpecificCompiler {
 
     @Override
     public File writeToDestination(File src, File destDir) throws IOException {
+      if (path == null) {
+        return null;
+      }
       for (OutputFile dependentFile : dependentFiles) {
         dependentFile.writeToDestination(src, destDir);
       }
@@ -87,6 +94,7 @@ public class InternalSpecificCompiler extends SpecificCompiler {
     }
   }
 
+  private Set<String> definedNames;
   private List<String> paths = new ArrayList<>();
   private Protocol protocol;
   private Schema schema;
@@ -118,8 +126,15 @@ public class InternalSpecificCompiler extends SpecificCompiler {
     }
   }
 
+  public void setDefinedNames(Set<String> definedNames) {
+    this.definedNames = definedNames;
+  }
+
   @Override
   protected OutputFile compile(Schema schema) {
+    if (definedNames != null && !definedNames.contains(schema.getFullName())) {
+      return new OutputFile();
+    }
     ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
     try {
       Thread.currentThread().setContextClassLoader(getClass().getClassLoader());

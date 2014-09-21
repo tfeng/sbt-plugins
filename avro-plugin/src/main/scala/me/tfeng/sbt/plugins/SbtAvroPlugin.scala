@@ -24,7 +24,7 @@ import java.io.File
 import java.nio.charset.Charset
 import scala.collection.JavaConversions
 import scala.collection.mutable.Buffer
-import org.apache.avro.{Protocol, Schema, SchemaUtils}
+import org.apache.avro.{Protocol, Schema, SchemaProcessor}
 import org.apache.avro.compiler.idl.Idl
 import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
 import org.apache.avro.generic.GenericData.StringType
@@ -46,7 +46,8 @@ object SbtAvro extends AutoPlugin {
         stringType := StringType.CharSequence,
         libraryDependencies ++= Seq(
             "org.apache.avro" % "avro" % Versions.avro,
-            "org.apache.avro" % "avro-ipc" % Versions.avro)
+            "org.apache.avro" % "avro-ipc" % Versions.avro),
+        externalSchemaDirectories := Seq()
     ) ++
     inConfig(Compile)(Seq(
         schemataDirectories := Seq("schemata"),
@@ -69,6 +70,7 @@ object SbtAvro extends AutoPlugin {
     lazy val schemataDirectories = SettingKey[Seq[String]]("schemata-dir", "Subdirectories under project root containing avro schemas")
     lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemas")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
+    lazy val externalSchemaDirectories = SettingKey[Seq[File]]("external-schemata-dirs", "Directories holding external schemas")
   }
 
   private def mkTargetDirectory = Def.task {
@@ -117,14 +119,22 @@ object SbtAvro extends AutoPlugin {
     this.synchronized {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val files = Buffer[File]()
+      val externalSchemas = Buffer[File]()
+      externalSchemaDirectories.value.foreach(directory => {
+        externalSchemas ++= (directory ** "*.avsc").get
+      })
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
-        val avscFiles = JavaConversions.asScalaBuffer(SchemaUtils.sortSchemas(
-            JavaConversions.asJavaList((source ** "*.avsc").get)))
-        val schemaParser = new Schema.Parser()
-        avscFiles.foreach(file => {
-          val schema = schemaParser.parse(file)
+        val processor = new SchemaProcessor(JavaConversions.asJavaList((source ** "*.avsc").get),
+            JavaConversions.asJavaList(externalSchemas));
+        val schemas = processor.parse()
+        val avscFiles = JavaConversions.asScalaSet(schemas.entrySet())
+        avscFiles.foreach(entry => {
+          val file = entry.getKey()
+          val schema = entry.getValue()
+          val definedNames = processor.definedNames(file)
           val compiler = new InternalSpecificCompiler(schema)
+          compiler.setDefinedNames(definedNames)
           val output = compiler.getOutputFile(destination)
           if (!output.exists() || output.lastModified() < file.lastModified()) {
             streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
