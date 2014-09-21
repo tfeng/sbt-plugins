@@ -83,7 +83,7 @@ public class SchemaProcessor {
 
   private void collectNames(JsonNode schema, String namespace, Map<String, Boolean> nameStates) {
     if (schema.isTextual()) {
-      recordName(nameStates, schema.getTextValue(), false);
+      recordName(nameStates, schema.getTextValue(), namespace, false);
     } else if (schema.isObject()) {
       String type = getText(schema, "type");
       if ("record".equals(type) || "error".equals(type) || "enum".equals(type)
@@ -93,15 +93,9 @@ public class SchemaProcessor {
           namespace = newNamespace;
         }
         String name = getText(schema, "name");
-        String fullName;
         int lastDotIndex = name.lastIndexOf('.');
         if (lastDotIndex >= 0) {
-          fullName = name;
           namespace = name.substring(0, lastDotIndex);
-        } else if (namespace != null) {
-          fullName = namespace + "." + name;
-        } else {
-          fullName = name;
         }
 
         Boolean defined = null;
@@ -119,7 +113,7 @@ public class SchemaProcessor {
         } else if ("fixed".equals("symbols")) {
           defined = true;
         }
-        recordName(nameStates, fullName, defined);
+        recordName(nameStates, name, namespace, defined);
       } else if ("array".equals(type)) {
         collectNames(schema.get("items"), namespace, nameStates);
       } else if ("map".equals(type)) {
@@ -184,12 +178,19 @@ public class SchemaProcessor {
     }
   }
 
-  private void recordName(Map<String, Boolean> nameStates, String name, Boolean defined) {
+  private void recordName(Map<String, Boolean> nameStates, String name, String namespace,
+      Boolean defined) {
     if (defined != null) {
-      if (!Schema.PRIMITIVES.containsKey(name)) {
-        Boolean value = nameStates.get(name);
+      if (!Schema.PRIMITIVES.containsKey(name) && !"enum".equals(name)) {
+        String fullName;
+        if (name.indexOf('.') >= 0 || namespace == null) {
+          fullName = name;
+        } else {
+          fullName = namespace + "." + name;
+        }
+        Boolean value = nameStates.get(fullName);
         if (value == null || !value && defined) {
-          nameStates.put(name, defined);
+          nameStates.put(fullName, defined);
         }
       }
     }

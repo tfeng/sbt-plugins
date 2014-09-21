@@ -37,7 +37,7 @@ import sbt.Project.inConfig
  */
 object SbtAvro extends AutoPlugin {
 
-  import SbtAvroKeys._
+  import Keys._
 
   override lazy val projectSettings = settings
 
@@ -66,7 +66,7 @@ object SbtAvro extends AutoPlugin {
         unmanagedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value
     ))
 
-  object SbtAvroKeys {
+  object Keys {
     lazy val schemataDirectories = SettingKey[Seq[String]]("schemata-dir", "Subdirectories under project root containing avro schemas")
     lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemas")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")

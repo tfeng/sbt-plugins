@@ -37,7 +37,7 @@ import sbt.Project.inConfig
  */
 object SbtDust extends AutoPlugin {
 
-  import SbtDustKeys._
+  import Keys._
 
   override lazy val projectSettings = settings
 
@@ -58,7 +58,7 @@ object SbtDust extends AutoPlugin {
       unmanagedSourceDirectories ++= templatesDirectories.value.map(templates => baseDirectory.value / templates)
   ))
 
-  object SbtDustKeys {
+  object Keys {
     lazy val dustToJs = TaskKey[Seq[File]]("dustToJs", "Compile dust templates to js in target folder")
     lazy val engine = SettingKey[Engine.Value]("engine", "Js engine to use (only Nashorn is supported for now)")
     lazy val templatesDirectories = SettingKey[Seq[String]]("templates-dir", "Subdirectories under project root containing dust templates")
