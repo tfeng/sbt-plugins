@@ -22,11 +22,14 @@ package org.apache.avro;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -34,26 +37,67 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.avro.Schema.Parser;
+import org.apache.avro.compiler.idl.NameTrackingIdl;
+import org.apache.avro.compiler.idl.NameTrackingIdl.NameTrackingMap;
+import org.apache.avro.compiler.idl.ParseException;
 import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.JsonParseException;
 import org.codehaus.jackson.JsonParser;
+import org.codehaus.jackson.node.ArrayNode;
 
 /**
  * @author Thomas Feng (huining.feng@gmail.com)
  */
 public class SchemaProcessor {
 
+  public static class ParseResult {
+
+    private final Map<File, Protocol> protocols;
+    private final Map<File, Schema> schemas;
+
+    private ParseResult(Map<File, Schema> schemas, Map<File, Protocol> protocols) {
+      this.schemas = schemas;
+      this.protocols = protocols;
+    }
+
+    public Map<File, Protocol> getProtocols() {
+      return protocols;
+    }
+
+    public Map<File, Schema> getSchemas() {
+      return schemas;
+    }
+  }
+
+  private static final Method PROTOCOL_PARSE_METHOD;
+
+  static {
+    try {
+      PROTOCOL_PARSE_METHOD = Protocol.class.getDeclaredMethod("parse", JsonNode.class);
+      PROTOCOL_PARSE_METHOD.setAccessible(true);
+    } catch (Exception e) {
+      throw new RuntimeException("Unable to get access to Protocol.parse(JsonNode) method", e);
+    }
+  }
+
   private final List<File> dependencyOrder = new ArrayList<>();
+
+  private final Set<File> idlFiles;
 
   private final Map<File, Map<String, Boolean>> names = new HashMap<>();
 
+  private final Set<File> protocolFiles;
+
   private final Set<File> schemaFiles;
 
-  public SchemaProcessor(List<File> schemaFiles, List<File> externalSchemas)
-      throws JsonParseException, IOException {
+  public SchemaProcessor(List<File> schemaFiles, List<File> externalSchemas,
+      List<File> protocolFiles, List<File> idlFiles) throws IOException {
     this.schemaFiles = new HashSet<>(schemaFiles);
+    this.protocolFiles = new HashSet<>(protocolFiles);
+    this.idlFiles = new HashSet<>(idlFiles);
     parseSchemaFiles(schemaFiles);
     parseSchemaFiles(externalSchemas);
+    parseProtocolFiles(protocolFiles);
+    parseIdlFiles(idlFiles);
     computeDependencyOrder();
   }
 
@@ -69,16 +113,49 @@ public class SchemaProcessor {
     }
   }
 
-  public Map<File, Schema> parse() throws IOException {
-    Map<File, Schema> result = new HashMap<>(schemaFiles.size());
+  public ParseResult parse() throws IOException {
+    Map<File, Schema> schemas = new HashMap<>(schemaFiles.size());
+    Map<File, Protocol> protocols = new HashMap<>(protocolFiles.size() + idlFiles.size());
+    Map<String, Schema> types = new HashMap<>();
     Parser parser = new Parser();
     for (File file : dependencyOrder) {
-      Schema schema = parser.parse(file);
-      if (schemaFiles.contains(file)) {
-        result.put(file, schema);
+      if (protocolFiles.contains(file)) {
+        Protocol protocol = new Protocol(null, null);
+        protocol.setTypes(types.values());
+        JsonParser jsonParser = Schema.FACTORY.createJsonParser(file);
+        JsonNode json = Schema.MAPPER.readTree(jsonParser);
+        try {
+          PROTOCOL_PARSE_METHOD.invoke(protocol, json);
+        } catch (InvocationTargetException e) {
+          throw new IOException("Unable to parse protocol file " + file, e.getTargetException());
+        } catch (Exception e) {
+          throw new RuntimeException("Unable to get access to Protocol.parse(JsonNode) method", e);
+        }
+        protocols.put(file, protocol);
+      } else if (idlFiles.contains(file)) {
+        NameTrackingIdl idl = new NameTrackingIdl(file);
+        NameTrackingMap names = idl.getNames();
+        names.putAll(types);
+        try {
+          Protocol protocol = idl.CompilationUnit();
+          protocols.put(file, protocol);
+          for (Schema type : protocol.getTypes()) {
+            types.put(type.getFullName(), type);
+          }
+        } catch (ParseException e) {
+          throw new IOException("Unable to parse IDL file " + file, e);
+        } finally {
+          idl.close();
+        }
+      } else {
+        Schema schema = parser.parse(file);
+        if (schemaFiles.contains(file)) {
+          schemas.put(file, schema);
+          types.put(schema.getFullName(), schema);
+        }
       }
     }
-    return result;
+    return new ParseResult(schemas, protocols);
   }
 
   private void collectNames(JsonNode schema, String namespace, Map<String, Boolean> nameStates) {
@@ -126,6 +203,30 @@ public class SchemaProcessor {
     }
   }
 
+  private void collectNamesForProtocol(JsonNode protocol, Map<String, Boolean> nameStates) {
+    String namespace = getText(protocol, "namespace");
+
+    ArrayNode types = (ArrayNode) protocol.get("types");
+    if (types != null) {
+      for (JsonNode type : types) {
+        collectNames(type, namespace, nameStates);
+      }
+    }
+
+    JsonNode messages = protocol.get("messages");
+    if (messages != null) {
+      for (Iterator<String> i = messages.getFieldNames(); i.hasNext();) {
+        JsonNode message = messages.get(i.next());
+        ArrayNode errors = (ArrayNode) message.get("errors");
+        if (errors != null) {
+          for (JsonNode error : errors) {
+            collectNames(error, namespace, nameStates);
+          }
+        }
+      }
+    }
+  }
+
   private void computeDependencyOrder() {
     Comparator<File> comparator = (file1, file2) -> {
       Map<String, Boolean> nameStates1 = names.get(file1);
@@ -168,7 +269,42 @@ public class SchemaProcessor {
     return child != null ? child.getTextValue() : null;
   }
 
-  private void parseSchemaFiles(List<File> schemaFiles) throws JsonParseException, IOException {
+  private void parseIdlFiles(List<File> idlFiles) throws IOException {
+    for (File idlFile : idlFiles) {
+      NameTrackingIdl idl = new NameTrackingIdl(idlFile);
+      try {
+        idl.CompilationUnit();
+      } catch (ParseException e) {
+        throw new IOException("Unable to parse IDL file " + idlFile, e);
+      } finally {
+        idl.close();
+      }
+
+      NameTrackingMap names = idl.getNames();
+      Set<String> undefinedNames = names.getUndefinedNames();
+      Map<String, Boolean> nameStates = new HashMap<>(names.size() + undefinedNames.size());
+      for (String name : names.keySet()) {
+        nameStates.put(name, true);
+      }
+      for (String undefinedName : undefinedNames) {
+        nameStates.put(undefinedName, false);
+      }
+
+      this.names.put(idlFile, nameStates);
+    }
+  }
+
+  private void parseProtocolFiles(List<File> protocolFiles) throws IOException {
+    for (File protocolFile : protocolFiles) {
+      JsonParser jsonParser = Schema.FACTORY.createJsonParser(protocolFile);
+      JsonNode schema = Schema.MAPPER.readTree(jsonParser);
+      Map<String, Boolean> nameStates = new HashMap<>();
+      collectNamesForProtocol(schema, nameStates);
+      names.put(protocolFile, nameStates);
+    }
+  }
+
+  private void parseSchemaFiles(List<File> schemaFiles) throws IOException {
     for (File schemaFile : schemaFiles) {
       JsonParser jsonParser = Schema.FACTORY.createJsonParser(schemaFile);
       JsonNode schema = Schema.MAPPER.readTree(jsonParser);

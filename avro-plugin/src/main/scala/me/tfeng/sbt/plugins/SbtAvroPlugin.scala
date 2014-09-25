@@ -53,8 +53,8 @@ object SbtAvro extends AutoPlugin {
         schemataDirectories := Seq("schemata"),
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
         mappings in packageSrc ++= createSourceMappings.value,
-        packageSrc <<= packageSrc dependsOn(compileAvdlTask, compileAvscTask, compileAvprTask),
-        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
+        packageSrc <<= packageSrc dependsOn(compileTask),
+        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
         unmanagedSourceDirectories ++=
           schemataDirectories.value.map(schemata => baseDirectory.value / schemata) ++
           Seq(baseDirectory.value / targetSchemataDirectory.value)
@@ -62,7 +62,7 @@ object SbtAvro extends AutoPlugin {
     inConfig(Test)(Seq(
         schemataDirectories := Seq("test/resources/schemata"),
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "test-schemata").toString,
-        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileAvdlTask.taskValue, compileAvscTask.taskValue, compileAvprTask.taskValue),
+        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
         unmanagedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value
     ))
 
@@ -81,41 +81,7 @@ object SbtAvro extends AutoPlugin {
     }
   }
 
-  private def compileAvdlTask = Def.task {
-    this.synchronized {
-      val destination = baseDirectory.value / targetSchemataDirectory.value
-      val files = Buffer[File]()
-      schemataDirectories.value.map(schemata => {
-        val source = baseDirectory.value / schemata
-        val avdlFiles = (source ** "*.avdl").get
-        avdlFiles.foreach(file => {
-          val idl = new Idl(file)
-          try {
-            val protocol = idl.CompilationUnit()
-            val compiler = new InternalSpecificCompiler(protocol)
-            val output = compiler.getOutputFile(destination)
-            if (!output.exists() || output.lastModified() < file.lastModified()) {
-              streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
-            }
-            val protocolFile = destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
-            IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
-
-            compiler.setStringType(stringType.value)
-            compiler.compileToDestination(file, destination)
-            files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
-
-            val generator = new ProtocolClientGenerator(protocol, destination)
-            files += generator.generate()
-          } finally {
-            idl.close()
-          }
-        })
-      })
-      files.toSeq
-    }
-  }
-
-  private def compileAvscTask = Def.task {
+  private def compileTask = Def.task {
     this.synchronized {
       val destination = baseDirectory.value / targetSchemataDirectory.value
       val files = Buffer[File]()
@@ -123,13 +89,19 @@ object SbtAvro extends AutoPlugin {
       externalSchemaDirectories.value.foreach(directory => {
         externalSchemas ++= (directory ** "*.avsc").get
       })
+
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
-        val processor = new SchemaProcessor(JavaConversions.asJavaList((source ** "*.avsc").get),
-            JavaConversions.asJavaList(externalSchemas));
-        val schemas = processor.parse()
-        val avscFiles = JavaConversions.asScalaSet(schemas.entrySet())
-        avscFiles.foreach(entry => {
+        val processor = new SchemaProcessor(
+            JavaConversions.asJavaList((source ** "*.avsc").get),
+            JavaConversions.asJavaList(externalSchemas),
+            JavaConversions.asJavaList((source ** "*.avpr").get),
+            JavaConversions.asJavaList((source ** "*.avdl").get));
+        val parseResult = processor.parse()
+
+        val schemas = parseResult.getSchemas()
+        val schemaFiles = JavaConversions.asScalaSet(schemas.entrySet())
+        schemaFiles.foreach(entry => {
           val file = entry.getKey()
           val schema = entry.getValue()
           val definedNames = processor.definedNames(file)
@@ -143,21 +115,15 @@ object SbtAvro extends AutoPlugin {
           compiler.compileToDestination(file, destination)
           files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
         })
-      })
-      files.toSeq
-    }
-  }
 
-  private def compileAvprTask = Def.task {
-    this.synchronized {
-      val destination = baseDirectory.value / targetSchemataDirectory.value
-      val files = Buffer[File]()
-      schemataDirectories.value.map(schemata => {
-        val source = baseDirectory.value / schemata
-        val avprFiles = (source ** "*.avpr").get
-        avprFiles.foreach(file => {
-          val protocol = Protocol.parse(file)
+        val protocols = parseResult.getProtocols()
+        val protocolFoles = JavaConversions.asScalaSet(protocols.entrySet())
+        protocolFoles.foreach(entry => {
+          val file = entry.getKey()
+          val protocol = entry.getValue()
+          val definedNames = processor.definedNames(file)
           val compiler = new InternalSpecificCompiler(protocol)
+          compiler.setDefinedNames(definedNames)
           val output = compiler.getOutputFile(destination)
           if (!output.exists() || output.lastModified() < file.lastModified()) {
             streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
@@ -165,11 +131,11 @@ object SbtAvro extends AutoPlugin {
           compiler.setStringType(stringType.value)
           compiler.compileToDestination(file, destination)
           files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
-
           val generator = new ProtocolClientGenerator(protocol, destination)
           files += generator.generate()
         })
       })
+
       files.toSeq
     }
   }
