@@ -24,12 +24,12 @@ import java.io.File
 import java.nio.charset.Charset
 import scala.collection.JavaConversions
 import scala.collection.mutable.Buffer
-import org.apache.avro.{Protocol, Schema, SchemaProcessor}
+import org.apache.avro.{ Protocol, Schema, SchemaProcessor }
 import org.apache.avro.compiler.idl.Idl
-import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
+import org.apache.avro.compiler.specific.{ InternalSpecificCompiler, ProtocolClientGenerator }
 import org.apache.avro.generic.GenericData.StringType
-import sbt.{AutoPlugin, Compile, Def, IO, SettingKey, Test, filesToFinder, globFilter, rebase, richFile, singleFileFinder, toGroupID}
-import sbt.Keys.{baseDirectory, libraryDependencies, sourceGenerators, mappings, packageSrc, streams, target, unmanagedSourceDirectories}
+import sbt.{ AutoPlugin, Compile, Def, IO, SettingKey, Test, filesToFinder, globFilter, rebase, richFile, singleFileFinder, toGroupID }
+import sbt.Keys.{ baseDirectory, libraryDependencies, sourceGenerators, mappings, packageSrc, streams, target, unmanagedSourceDirectories }
 import sbt.Project.inConfig
 
 /**
@@ -43,28 +43,25 @@ object SbtAvro extends AutoPlugin {
 
   lazy val settings =
     Seq(
-        stringType := StringType.CharSequence,
-        libraryDependencies ++= Seq(
-            "org.apache.avro" % "avro" % Versions.avro,
-            "org.apache.avro" % "avro-ipc" % Versions.avro),
-        externalSchemaDirectories := Seq()
-    ) ++
-    inConfig(Compile)(Seq(
+      stringType := StringType.CharSequence,
+      libraryDependencies ++= Seq(
+        "org.apache.avro" % "avro" % Versions.avro,
+        "org.apache.avro" % "avro-ipc" % Versions.avro),
+      externalSchemaDirectories := Seq()) ++
+      inConfig(Compile)(Seq(
         schemataDirectories := Seq("schemata"),
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
         mappings in packageSrc ++= createSourceMappings.value,
-        packageSrc <<= packageSrc dependsOn(compileTask),
+        packageSrc <<= packageSrc dependsOn (compileTask),
         sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
         unmanagedSourceDirectories ++=
           schemataDirectories.value.map(schemata => baseDirectory.value / schemata) ++
-          Seq(baseDirectory.value / targetSchemataDirectory.value)
-    )) ++
-    inConfig(Test)(Seq(
+          Seq(baseDirectory.value / targetSchemataDirectory.value))) ++
+      inConfig(Test)(Seq(
         schemataDirectories := Seq("test/resources/schemata"),
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "test-schemata").toString,
         sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
-        unmanagedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value
-    ))
+        unmanagedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value))
 
   object Keys {
     lazy val schemataDirectories = SettingKey[Seq[String]]("schemata-dir", "Subdirectories under project root containing avro schemas")
@@ -93,10 +90,10 @@ object SbtAvro extends AutoPlugin {
       schemataDirectories.value.map(schemata => {
         val source = baseDirectory.value / schemata
         val processor = new SchemaProcessor(
-            JavaConversions.asJavaList((source ** "*.avsc").get),
-            JavaConversions.asJavaList(externalSchemas),
-            JavaConversions.asJavaList((source ** "*.avpr").get),
-            JavaConversions.asJavaList((source ** "*.avdl").get));
+          JavaConversions.asJavaList((source ** "*.avsc").get),
+          JavaConversions.asJavaList(externalSchemas),
+          JavaConversions.asJavaList((source ** "*.avpr").get),
+          JavaConversions.asJavaList((source ** "*.avdl").get));
         val parseResult = processor.parse()
 
         val schemas = parseResult.getSchemas()
@@ -117,10 +114,15 @@ object SbtAvro extends AutoPlugin {
         })
 
         val protocols = parseResult.getProtocols()
-        val protocolFoles = JavaConversions.asScalaSet(protocols.entrySet())
-        protocolFoles.foreach(entry => {
+        val protocolFiles = JavaConversions.asScalaSet(protocols.entrySet())
+        protocolFiles.foreach(entry => {
           val file = entry.getKey()
           val protocol = entry.getValue()
+          if ("avdl".equals(file.ext)) {
+            val protocolFile =
+              destination / file.relativeTo(source).get.toString.replaceAll("(\\.avdl$)", ".avpr")
+            IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
+          }
           val definedNames = processor.definedNames(file)
           val compiler = new InternalSpecificCompiler(protocol)
           compiler.setDefinedNames(definedNames)
