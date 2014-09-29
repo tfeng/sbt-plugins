@@ -9,7 +9,7 @@ package $protocol.getNamespace();
 #foreach ($annotation in $this.javaAnnotations($protocol))
 @$annotation
 #end
-@org.apache.avro.specific.AvroGenerated
+@me.tfeng.play.avro.AvroClient
 public interface $this.mangle($protocol.getName())Client {
 
   public static final org.apache.avro.Protocol PROTOCOL = org.apache.avro.Protocol.parse(${this.javaSplit($protocol.toString())});
