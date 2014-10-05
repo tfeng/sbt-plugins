@@ -44,6 +44,8 @@ import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.node.ArrayNode;
 
+import com.google.common.collect.ImmutableSet;
+
 /**
  * @author Thomas Feng (huining.feng@gmail.com)
  */
@@ -67,6 +69,11 @@ public class SchemaProcessor {
       return schemas;
     }
   }
+
+  private static final Set<String> PREDEFINED_TYPES = ImmutableSet.<String>builder()
+      .addAll(Schema.PRIMITIVES.keySet())
+      .add("array", "enum", "error", "fixed", "map", "record")
+      .build();
 
   private static final Method PROTOCOL_PARSE_METHOD;
 
@@ -149,9 +156,9 @@ public class SchemaProcessor {
         }
       } else {
         Schema schema = parser.parse(file);
+        types.put(schema.getFullName(), schema);
         if (schemaFiles.contains(file)) {
           schemas.put(file, schema);
-          types.put(schema.getFullName(), schema);
         }
       }
     }
@@ -217,6 +224,16 @@ public class SchemaProcessor {
     if (messages != null) {
       for (Iterator<String> i = messages.getFieldNames(); i.hasNext();) {
         JsonNode message = messages.get(i.next());
+
+        JsonNode request = message.get("request");
+        for (Iterator<JsonNode> iterator = request.getElements(); iterator.hasNext();) {
+          JsonNode type = iterator.next().get("type");
+          collectNames(type, namespace, nameStates);
+        }
+
+        JsonNode response = message.get("response");
+        collectNames(response, namespace, nameStates);
+
         ArrayNode errors = (ArrayNode) message.get("errors");
         if (errors != null) {
           for (JsonNode error : errors) {
@@ -317,7 +334,7 @@ public class SchemaProcessor {
   private void recordName(Map<String, Boolean> nameStates, String name, String namespace,
       Boolean defined) {
     if (defined != null) {
-      if (!Schema.PRIMITIVES.containsKey(name) && !"enum".equals(name)) {
+      if (!PREDEFINED_TYPES.contains(name)) {
         String fullName;
         if (name.indexOf('.') >= 0 || namespace == null) {
           fullName = name;

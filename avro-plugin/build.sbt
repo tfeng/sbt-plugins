@@ -6,6 +6,9 @@ sbtPlugin := true
 
 Settings.common
 
-libraryDependencies += "org.apache.avro" % "avro-compiler" % Versions.avro
+libraryDependencies ++= Seq(
+  "com.google.guava" % "guava" % Versions.guava,
+  "org.apache.avro" % "avro-compiler" % Versions.avro
+)
 
 unmanagedSourceDirectories in Compile += baseDirectory.value / "../project"
