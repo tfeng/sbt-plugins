@@ -131,6 +131,7 @@ public class SchemaProcessor {
         protocol.setTypes(types.values());
         JsonParser jsonParser = Schema.FACTORY.createJsonParser(file);
         JsonNode json = Schema.MAPPER.readTree(jsonParser);
+
         try {
           PROTOCOL_PARSE_METHOD.invoke(protocol, json);
         } catch (InvocationTargetException e) {
@@ -138,25 +139,32 @@ public class SchemaProcessor {
         } catch (Exception e) {
           throw new RuntimeException("Unable to get access to Protocol.parse(JsonNode) method", e);
         }
+
         protocols.put(file, protocol);
+        for (Schema type : protocol.getTypes()) {
+          collectSchemas(type, types);
+        }
       } else if (idlFiles.contains(file)) {
         NameTrackingIdl idl = new NameTrackingIdl(file);
         NameTrackingMap names = idl.getNames();
         names.putAll(types);
+
+        Protocol protocol;
         try {
-          Protocol protocol = idl.CompilationUnit();
-          protocols.put(file, protocol);
-          for (Schema type : protocol.getTypes()) {
-            types.put(type.getFullName(), type);
-          }
+          protocol = idl.CompilationUnit();
         } catch (ParseException e) {
           throw new IOException("Unable to parse IDL file " + file, e);
         } finally {
           idl.close();
         }
+
+        protocols.put(file, protocol);
+        for (Schema type : protocol.getTypes()) {
+          collectSchemas(type, types);
+        }
       } else {
         Schema schema = parser.parse(file);
-        types.put(schema.getFullName(), schema);
+        collectSchemas(schema, types);
         if (schemaFiles.contains(file)) {
           schemas.put(file, schema);
         }
@@ -241,6 +249,29 @@ public class SchemaProcessor {
           }
         }
       }
+    }
+  }
+
+  private void collectSchemas(Schema schema, Map<String, Schema> schemas) {
+    switch (schema.getType()) {
+    case RECORD:
+      schemas.put(schema.getFullName(), schema);
+      schema.getFields().forEach(field -> collectSchemas(field.schema(), schemas));
+      break;
+    case MAP:
+      collectSchemas(schema.getValueType(), schemas);
+      break;
+    case ARRAY:
+      collectSchemas(schema.getElementType(), schemas);
+      break;
+    case UNION:
+      schema.getTypes().forEach(type -> collectSchemas(type, schemas));
+      break;
+    case ENUM:
+    case FIXED:
+      schemas.put(schema.getFullName(), schema);
+      break;
+    default:
     }
   }
 
