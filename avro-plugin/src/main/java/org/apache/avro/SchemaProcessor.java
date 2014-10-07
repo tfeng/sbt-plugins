@@ -44,6 +44,7 @@ import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.node.ArrayNode;
 
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableSet;
 
 /**
@@ -85,6 +86,35 @@ public class SchemaProcessor {
       throw new RuntimeException("Unable to get access to Protocol.parse(JsonNode) method", e);
     }
   }
+
+  private final Comparator<File> DEPENDENCY_COMPARATOR = (file1, file2) -> {
+    Map<String, Boolean> nameStates1 = names.get(file1);
+    Map<String, Boolean> nameStates2 = names.get(file2);
+    int result = 0;
+    for (Entry<String, Boolean> entry : nameStates1.entrySet()) {
+      Boolean value = nameStates2.get(entry.getKey());
+      if (!entry.getValue()) {
+        if (value != null && value) {
+          if (result == -1) {
+            throw new RuntimeException("These two files mutually depend on each other: " + file1
+                + " and " + file2);
+          } else {
+            result = 1;
+          }
+        }
+      } else if (entry.getValue()) {
+        if (value != null && !value) {
+          if (result == 1) {
+            throw new RuntimeException("These two files mutually depend on each other: " + file1
+                + " and " + file2);
+          } else {
+            result = -1;
+          }
+        }
+      }
+    }
+    return result;
+  };
 
   private final List<File> dependencyOrder = new ArrayList<>();
 
@@ -276,40 +306,41 @@ public class SchemaProcessor {
   }
 
   private void computeDependencyOrder() {
-    Comparator<File> comparator = (file1, file2) -> {
-      Map<String, Boolean> nameStates1 = names.get(file1);
-      Map<String, Boolean> nameStates2 = names.get(file2);
-      for (Entry<String, Boolean> entry : nameStates1.entrySet()) {
-        Boolean value = nameStates2.get(entry.getKey());
-        if (!entry.getValue()) {
-          if (value != null && value) {
-            return 1;
-          }
-        } else if (entry.getValue()) {
-          if (value != null && !value) {
-            return -1;
-          }
-        }
-      }
-      return 0;
-    };
-
     dependencyOrder.clear();
-    File[] files = names.keySet().toArray(new File[names.size()]);
-    for (int i = 0; i < files.length; i++) {
-      File min = files[i];
-      for (int j = i + 1; j < files.length; j++) {
-        int result = comparator.compare(min, files[j]);
-        if (result > 0) {
-          min = files[j];
-          files[j] = files[i];
-          files[i] = min;
+    HashMultimap<File, File> dependencies = HashMultimap.create();
+    Set<File> files = new HashSet<>(names.keySet());
+    for (File file1 : files) {
+      for (File file2 : files) {
+        if (!file1.equals(file2)) {
+          if (DEPENDENCY_COMPARATOR.compare(file1, file2) > 0) {
+            dependencies.put(file1, file2); // file1 depends on file2.
+          }
         }
       }
-      dependencyOrder.add(min);
     }
-
-    validateDependencyOrder();
+    while (!files.isEmpty()) {
+      File nextFile = null;
+      for (File file : files) {
+        if (dependencies.get(file).isEmpty()) {
+          nextFile = file;
+          break;
+        }
+      }
+      if (nextFile == null) {
+        throw new RuntimeException("Unable to sort schema files topologically; "
+            + "remaining files that contain dependency cycle(s) are these: "
+            + dependencies.keySet());
+      }
+      files.remove(nextFile);
+      dependencies.removeAll(nextFile);
+      for (Iterator<Entry<File, File>> iterator = dependencies.entries().iterator();
+          iterator.hasNext();) {
+        if (nextFile.equals(iterator.next().getValue())) {
+          iterator.remove();
+        }
+      }
+      dependencyOrder.add(nextFile);
+    }
   }
 
   private String getText(JsonNode node, String key) {
@@ -375,20 +406,6 @@ public class SchemaProcessor {
         Boolean value = nameStates.get(fullName);
         if (value == null || !value && defined) {
           nameStates.put(fullName, defined);
-        }
-      }
-    }
-  }
-
-  private void validateDependencyOrder() {
-    Set<String> definedNames = new HashSet<>();
-    for (File file : dependencyOrder) {
-      Map<String, Boolean> nameStates = names.get(file);
-      for (Entry<String, Boolean> entry : nameStates.entrySet()) {
-        if (entry.getValue()) {
-          definedNames.add(entry.getKey());
-        } else if (!definedNames.contains(entry.getKey())) {
-          throw new RuntimeException("Name " + entry.getKey() + " in " + file + " is not defined");
         }
       }
     }
