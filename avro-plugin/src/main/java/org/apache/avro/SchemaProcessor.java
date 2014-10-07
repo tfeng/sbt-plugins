@@ -52,6 +52,39 @@ import com.google.common.collect.ImmutableSet;
  */
 public class SchemaProcessor {
 
+  public class DependencyComparator implements Comparator<File> {
+
+    @Override
+    public int compare(File file1, File file2) {
+      Map<String, Boolean> nameStates1 = names.get(file1);
+      Map<String, Boolean> nameStates2 = names.get(file2);
+      int result = 0;
+      for (Entry<String, Boolean> entry : nameStates1.entrySet()) {
+        Boolean value = nameStates2.get(entry.getKey());
+        if (!entry.getValue()) {
+          if (value != null && value) {
+            if (result == -1) {
+              throw new RuntimeException("These two files mutually depend on each other: " + file1
+                  + " and " + file2);
+            } else {
+              result = 1;
+            }
+          }
+        } else if (entry.getValue()) {
+          if (value != null && !value) {
+            if (result == 1) {
+              throw new RuntimeException("These two files mutually depend on each other: " + file1
+                  + " and " + file2);
+            } else {
+              result = -1;
+            }
+          }
+        }
+      }
+      return result;
+    }
+  }
+
   public static class ParseResult {
 
     private final Map<File, Protocol> protocols;
@@ -87,34 +120,7 @@ public class SchemaProcessor {
     }
   }
 
-  private final Comparator<File> DEPENDENCY_COMPARATOR = (file1, file2) -> {
-    Map<String, Boolean> nameStates1 = names.get(file1);
-    Map<String, Boolean> nameStates2 = names.get(file2);
-    int result = 0;
-    for (Entry<String, Boolean> entry : nameStates1.entrySet()) {
-      Boolean value = nameStates2.get(entry.getKey());
-      if (!entry.getValue()) {
-        if (value != null && value) {
-          if (result == -1) {
-            throw new RuntimeException("These two files mutually depend on each other: " + file1
-                + " and " + file2);
-          } else {
-            result = 1;
-          }
-        }
-      } else if (entry.getValue()) {
-        if (value != null && !value) {
-          if (result == 1) {
-            throw new RuntimeException("These two files mutually depend on each other: " + file1
-                + " and " + file2);
-          } else {
-            result = -1;
-          }
-        }
-      }
-    }
-    return result;
-  };
+  private final DependencyComparator dependencyComparator = new DependencyComparator();
 
   private final List<File> dependencyOrder = new ArrayList<>();
 
@@ -307,17 +313,19 @@ public class SchemaProcessor {
 
   private void computeDependencyOrder() {
     dependencyOrder.clear();
+
     HashMultimap<File, File> dependencies = HashMultimap.create();
     Set<File> files = new HashSet<>(names.keySet());
     for (File file1 : files) {
       for (File file2 : files) {
         if (!file1.equals(file2)) {
-          if (DEPENDENCY_COMPARATOR.compare(file1, file2) > 0) {
+          if (dependencyComparator.compare(file1, file2) > 0) {
             dependencies.put(file1, file2); // file1 depends on file2.
           }
         }
       }
     }
+
     while (!files.isEmpty()) {
       File nextFile = null;
       for (File file : files) {
