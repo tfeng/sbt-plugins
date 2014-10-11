@@ -47,7 +47,8 @@ object SbtAvro extends AutoPlugin {
       libraryDependencies ++= Seq(
         "org.apache.avro" % "avro" % Versions.avro,
         "org.apache.avro" % "avro-ipc" % Versions.avro),
-      externalSchemaDirectories := Seq()) ++
+      externalSchemaDirectories := Seq(),
+      removeAvroRemoteExceptions := true) ++
       inConfig(Compile)(Seq(
         schemataDirectories := Seq("schemata"),
         targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
@@ -68,6 +69,7 @@ object SbtAvro extends AutoPlugin {
     lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemas")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
     lazy val externalSchemaDirectories = SettingKey[Seq[File]]("external-schemata-dirs", "Directories holding external schemas")
+    lazy val removeAvroRemoteExceptions = SettingKey[Boolean]("remove-avro-remote-exceptions", "Whether to remove AvroRemoteException's in interfaces");
   }
 
   private def mkTargetDirectory = Def.task {
@@ -124,7 +126,7 @@ object SbtAvro extends AutoPlugin {
             IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
           }
           val definedNames = processor.definedNames(file)
-          val compiler = new InternalSpecificCompiler(protocol)
+          val compiler = new InternalSpecificCompiler(protocol, removeAvroRemoteExceptions.value)
           compiler.setDefinedNames(definedNames)
           val output = compiler.getOutputFile(destination)
           if (!output.exists() || output.lastModified() < file.lastModified()) {

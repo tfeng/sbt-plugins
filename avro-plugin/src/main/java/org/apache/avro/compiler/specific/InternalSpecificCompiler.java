@@ -25,6 +25,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.avro.Protocol;
@@ -94,19 +96,25 @@ public class InternalSpecificCompiler extends SpecificCompiler {
     }
   }
 
+  private static final Pattern AVRO_REMOTE_EXCEPTION_PATTERN =
+      Pattern.compile("throws org.apache.avro.AvroRemoteException\\s*(;|,\\s*)");
   private Set<String> definedNames;
   private List<String> paths = new ArrayList<>();
   private Protocol protocol;
+
+  private final boolean removeAvroRemoteExceptions;
   private Schema schema;
 
-  public InternalSpecificCompiler(Protocol protocol) {
+  public InternalSpecificCompiler(Protocol protocol, boolean removeAvroRemoteExceptions) {
     super(protocol);
     this.protocol = protocol;
+    this.removeAvroRemoteExceptions = removeAvroRemoteExceptions;
   }
 
   public InternalSpecificCompiler(Schema schema) {
     super(schema);
     this.schema = schema;
+    this.removeAvroRemoteExceptions = false;
   }
 
   public List<File> getFiles(File destinationDirectory) {
@@ -159,11 +167,32 @@ public class InternalSpecificCompiler extends SpecificCompiler {
     }
   }
 
+
   protected OutputFile compileInterfaceInternal(Protocol protocol) {
-    return OutputFile.ensureOutputFile(super.compileInterface(protocol));
+    SpecificCompiler.OutputFile outputFile = super.compileInterface(protocol);
+    outputFile.contents = rewriteContents(outputFile.contents);
+    return OutputFile.ensureOutputFile(outputFile);
   }
 
   protected OutputFile compileSchemaInternal(Schema schema) {
     return OutputFile.ensureOutputFile(super.compile(schema));
+  }
+
+  protected String rewriteContents(String contents) {
+    if (removeAvroRemoteExceptions) {
+      Matcher matcher = AVRO_REMOTE_EXCEPTION_PATTERN.matcher(contents);
+      StringBuffer buffer = new StringBuffer();
+      while(matcher.find()) {
+        if (";".equals(matcher.group(1))) {
+          matcher.appendReplacement(buffer, ";");
+        } else {
+          matcher.appendReplacement(buffer, "throws ");
+        }
+      }
+      matcher.appendTail(buffer);
+      return buffer.toString();
+    } else {
+      return contents;
+    }
   }
 }
