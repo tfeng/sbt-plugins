@@ -12,7 +12,7 @@ package $protocol.getNamespace();
 @me.tfeng.play.avro.AvroClient
 public interface $this.mangle($protocol.getName())Client {
 
-  public static final org.apache.avro.Protocol PROTOCOL = org.apache.avro.Protocol.parse(${this.javaSplit($protocol.toString())});
+  public static final org.apache.avro.Protocol PROTOCOL = ${protocol.getNamespace()}.${this.mangle($protocol.getName())}.PROTOCOL;
 
 #foreach ($e in $protocol.getMessages().entrySet())
 #set ($name = $e.getKey())

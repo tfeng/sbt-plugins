@@ -36,10 +36,12 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.avro.Protocol.Message;
 import org.apache.avro.Schema.Parser;
 import org.apache.avro.compiler.idl.NameTrackingIdl;
 import org.apache.avro.compiler.idl.NameTrackingIdl.NameTrackingMap;
 import org.apache.avro.compiler.idl.ParseException;
+import org.apache.avro.generic.GenericData.StringType;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.node.ArrayNode;
@@ -111,6 +113,8 @@ public class SchemaProcessor {
 
   private static final Method PROTOCOL_PARSE_METHOD;
 
+  private static String STRING_PROP = "avro.java.string";
+
   static {
     try {
       PROTOCOL_PARSE_METHOD = Protocol.class.getDeclaredMethod("parse", JsonNode.class);
@@ -132,11 +136,14 @@ public class SchemaProcessor {
 
   private final Set<File> schemaFiles;
 
+  private StringType stringType;
+
   public SchemaProcessor(List<File> schemaFiles, List<File> externalSchemas,
-      List<File> protocolFiles, List<File> idlFiles) throws IOException {
+      List<File> protocolFiles, List<File> idlFiles, StringType stringType) throws IOException {
     this.schemaFiles = new HashSet<>(schemaFiles);
     this.protocolFiles = new HashSet<>(protocolFiles);
     this.idlFiles = new HashSet<>(idlFiles);
+    this.stringType = stringType;
     parseSchemaFiles(schemaFiles);
     parseSchemaFiles(externalSchemas);
     parseProtocolFiles(protocolFiles);
@@ -176,6 +183,7 @@ public class SchemaProcessor {
           throw new RuntimeException("Unable to get access to Protocol.parse(JsonNode) method", e);
         }
 
+        addStringProperties(protocol);
         protocols.put(file, protocol);
         for (Schema type : protocol.getTypes()) {
           collectSchemas(type, types);
@@ -194,12 +202,14 @@ public class SchemaProcessor {
           idl.close();
         }
 
+        addStringProperties(protocol);
         protocols.put(file, protocol);
         for (Schema type : protocol.getTypes()) {
           collectSchemas(type, types);
         }
       } else {
         Schema schema = parser.parse(file);
+        addStringProperties(schema);
         collectSchemas(schema, types);
         if (schemaFiles.contains(file)) {
           schemas.put(file, schema);
@@ -207,6 +217,40 @@ public class SchemaProcessor {
       }
     }
     return new ParseResult(schemas, protocols);
+  }
+
+  private void addStringProperties(Protocol protocol) {
+    for (Schema type : protocol.getTypes()) {
+      addStringProperties(type);
+    }
+    for (Message message : protocol.getMessages().values()) {
+      addStringProperties(message.getRequest());
+      addStringProperties(message.getResponse());
+      addStringProperties(message.getErrors());
+    }
+  }
+
+  private void addStringProperties(Schema schema) {
+    switch (schema.getType()) {
+    case STRING:
+      if (schema.getProp(STRING_PROP) == null) {
+        schema.addProp(STRING_PROP, stringType.name());
+      }
+      break;
+    case RECORD:
+      schema.getFields().forEach(field -> addStringProperties(field.schema()));
+      break;
+    case MAP:
+      addStringProperties(schema.getValueType());
+      break;
+    case ARRAY:
+      addStringProperties(schema.getElementType());
+      break;
+    case UNION:
+      schema.getTypes().forEach(type -> addStringProperties(type));
+      break;
+    default:
+    }
   }
 
   private void collectNames(JsonNode schema, String namespace, Map<String, Boolean> nameStates) {

@@ -43,7 +43,7 @@ object SbtAvro extends AutoPlugin {
 
   lazy val settings =
     Seq(
-      stringType := StringType.CharSequence,
+      stringType := StringType.String,
       libraryDependencies ++= Seq(
         "org.apache.avro" % "avro" % Versions.avro,
         "org.apache.avro" % "avro-ipc" % Versions.avro),
@@ -95,7 +95,8 @@ object SbtAvro extends AutoPlugin {
           JavaConversions.asJavaList((source ** "*.avsc").get),
           JavaConversions.asJavaList(externalSchemas),
           JavaConversions.asJavaList((source ** "*.avpr").get),
-          JavaConversions.asJavaList((source ** "*.avdl").get));
+          JavaConversions.asJavaList((source ** "*.avdl").get),
+          stringType.value);
         val parseResult = processor.parse()
 
         val schemas = parseResult.getSchemas()
@@ -136,6 +137,7 @@ object SbtAvro extends AutoPlugin {
           compiler.compileToDestination(file, destination)
           files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
           val generator = new ProtocolClientGenerator(protocol, destination)
+          generator.setStringType(stringType.value)
           files += generator.generate()
         })
       })
