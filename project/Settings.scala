@@ -7,6 +7,7 @@ object Settings {
   val common: Seq[Setting[_]] = Seq(
     organization := "me.tfeng.sbt-plugins",
     version := Versions.project,
+    scalaVersion := Versions.scala,
     pomExtra :=
       <developers>
         <developer>
