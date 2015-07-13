@@ -10,7 +10,7 @@ object Versions {
 
   val guava = "18.0"
 
-  val scala = "2.10.4"
+  val scala = "2.10.5"
 
-  val webjarsLocator = "0.24"
+  val webjarsLocator = "0.26"
 }
