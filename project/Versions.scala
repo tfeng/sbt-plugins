@@ -12,5 +12,5 @@ object Versions {
 
   val scala = "2.10.5"
 
-  val webjarsLocator = "0.26"
+  val webjarsLocator = "0.27"
 }
