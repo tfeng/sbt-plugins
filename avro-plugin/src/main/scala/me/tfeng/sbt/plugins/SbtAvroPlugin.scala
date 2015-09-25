@@ -50,23 +50,21 @@ object SbtAvro extends AutoPlugin {
       externalSchemaDirectories := Seq(),
       removeAvroRemoteExceptions := true) ++
       inConfig(Compile)(Seq(
-        schemataDirectories := Seq("schemata"),
-        targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "schemata").toString,
+        schemataDirectories := Seq(baseDirectory.value / "schemata"),
+        targetSchemataDirectory := target.value / "schemata",
         mappings in packageSrc ++= createSourceMappings.value,
         packageSrc <<= packageSrc dependsOn (compileTask),
         sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
-        unmanagedSourceDirectories ++=
-          schemataDirectories.value.map(schemata => baseDirectory.value / schemata) ++
-          Seq(baseDirectory.value / targetSchemataDirectory.value))) ++
+        unmanagedSourceDirectories ++= schemataDirectories.value ++ Seq(targetSchemataDirectory.value)))
       inConfig(Test)(Seq(
-        schemataDirectories := Seq("test/resources/schemata"),
-        targetSchemataDirectory := (target.value.relativeTo(baseDirectory.value).get / "test-schemata").toString,
+        schemataDirectories := Seq(baseDirectory.value / "test" / "resources" / "schemata"),
+        targetSchemataDirectory := target.value / "test-schemata",
         sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
-        unmanagedSourceDirectories += baseDirectory.value / targetSchemataDirectory.value))
+        unmanagedSourceDirectories += targetSchemataDirectory.value))
 
   object Keys {
-    lazy val schemataDirectories = SettingKey[Seq[String]]("schemata-dir", "Subdirectories under project root containing avro schemas")
-    lazy val targetSchemataDirectory = SettingKey[String]("target-schemata-dir", "Target directory to store compiled avro schemas")
+    lazy val schemataDirectories = SettingKey[Seq[File]]("schemata-dir", "Subdirectories under project root containing avro schemas")
+    lazy val targetSchemataDirectory = SettingKey[File]("target-schemata-dir", "Target directory to store compiled avro schemas")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
     lazy val externalSchemaDirectories = SettingKey[Seq[File]]("external-schemata-dirs", "Directories holding external schemas")
     lazy val removeAvroRemoteExceptions = SettingKey[Boolean]("remove-avro-remote-exceptions", "Whether to remove AvroRemoteException's in interfaces");
@@ -74,15 +72,15 @@ object SbtAvro extends AutoPlugin {
 
   private def mkTargetDirectory = Def.task {
     this.synchronized {
-      (baseDirectory.value / (targetSchemataDirectory in Compile).value).mkdirs()
-      (baseDirectory.value / (targetSchemataDirectory in Test).value).mkdirs()
+      (targetSchemataDirectory in Compile).value.mkdirs()
+      (targetSchemataDirectory in Test).value.mkdirs()
       Seq.empty[File]
     }
   }
 
   private def compileTask = Def.task {
     this.synchronized {
-      val destination = baseDirectory.value / targetSchemataDirectory.value
+      val destination = targetSchemataDirectory.value
       val files = Buffer[File]()
       val externalSchemas = Buffer[File]()
       externalSchemaDirectories.value.foreach(directory => {
@@ -90,7 +88,7 @@ object SbtAvro extends AutoPlugin {
       })
 
       schemataDirectories.value.map(schemata => {
-        val source = baseDirectory.value / schemata
+        val source = schemata
         val processor = new SchemaProcessor(
           JavaConversions.asJavaList((source ** "*.avsc").get),
           JavaConversions.asJavaList(externalSchemas),
@@ -147,7 +145,7 @@ object SbtAvro extends AutoPlugin {
   }
 
   private def createSourceMappings = Def.task {
-    val directory = baseDirectory.value / targetSchemataDirectory.value
+    val directory = targetSchemataDirectory.value
     directory.descendantsExcept("*.java", "").get pair rebase(directory, "")
   }
 }
