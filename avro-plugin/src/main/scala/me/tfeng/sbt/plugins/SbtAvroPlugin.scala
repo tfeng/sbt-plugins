@@ -22,15 +22,16 @@ package me.tfeng.sbt.plugins
 
 import java.io.File
 import java.nio.charset.Charset
+
+import org.apache.avro.SchemaProcessor
+import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
+import org.apache.avro.generic.GenericData.StringType
+import sbt.Keys.{baseDirectory, cleanFiles, libraryDependencies, mappings, packageSrc, sourceGenerators, streams, unmanagedSourceDirectories}
+import sbt.Project.inConfig
+import sbt.{AutoPlugin, Compile, Def, IO, SettingKey, Test, filesToFinder, globFilter, rebase, richFile, singleFileFinder, toGroupID}
+
 import scala.collection.JavaConversions
 import scala.collection.mutable.Buffer
-import org.apache.avro.{ Protocol, Schema, SchemaProcessor }
-import org.apache.avro.compiler.idl.Idl
-import org.apache.avro.compiler.specific.{ InternalSpecificCompiler, ProtocolClientGenerator }
-import org.apache.avro.generic.GenericData.StringType
-import sbt.{ AutoPlugin, Compile, Def, IO, SettingKey, Test, filesToFinder, globFilter, rebase, richFile, singleFileFinder, toGroupID }
-import sbt.Keys.{ baseDirectory, libraryDependencies, sourceGenerators, mappings, packageSrc, streams, target, unmanagedSourceDirectories }
-import sbt.Project.inConfig
 
 /**
  * @author Thomas Feng (huining.feng@gmail.com)
@@ -48,26 +49,31 @@ object SbtAvro extends AutoPlugin {
         "org.apache.avro" % "avro" % Versions.avro,
         "org.apache.avro" % "avro-ipc" % Versions.avro),
       externalSchemaDirectories := Seq(),
-      removeAvroRemoteExceptions := true) ++
-      inConfig(Compile)(Seq(
-        schemataDirectories := Seq(baseDirectory.value / "schemata"),
-        targetSchemataDirectory := target.value / "schemata",
-        mappings in packageSrc ++= createSourceMappings.value,
-        packageSrc <<= packageSrc dependsOn (compileTask),
-        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
-        unmanagedSourceDirectories ++= schemataDirectories.value ++ Seq(targetSchemataDirectory.value)))
-      inConfig(Test)(Seq(
-        schemataDirectories := Seq(baseDirectory.value / "test" / "resources" / "schemata"),
-        targetSchemataDirectory := target.value / "test-schemata",
-        sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
-        unmanagedSourceDirectories += targetSchemataDirectory.value))
+      removeAvroRemoteExceptions := true,
+      extraSchemaClasses := Seq()) ++
+    inConfig(Compile)(Seq(
+      schemataDirectories := Seq(baseDirectory.value / "schemata"),
+      targetSchemataDirectory := baseDirectory.value / "codegen",
+      mappings in packageSrc ++= createSourceMappings.value,
+      packageSrc <<= packageSrc dependsOn (compileTask),
+      sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
+      unmanagedSourceDirectories ++=
+        schemataDirectories.value ++
+        Seq(targetSchemataDirectory.value))) ++
+    inConfig(Test)(Seq(
+      schemataDirectories := Seq(baseDirectory.value / "test" / "resources" / "schemata"),
+      sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
+      unmanagedSourceDirectories += targetSchemataDirectory.value)) ++
+    Seq(
+      cleanFiles += (targetSchemataDirectory in Compile).value)
 
   object Keys {
     lazy val schemataDirectories = SettingKey[Seq[File]]("schemata-dir", "Subdirectories under project root containing avro schemas")
     lazy val targetSchemataDirectory = SettingKey[File]("target-schemata-dir", "Target directory to store compiled avro schemas")
     lazy val stringType = SettingKey[StringType]("string-type", "Java type to be emitted for string schemas")
     lazy val externalSchemaDirectories = SettingKey[Seq[File]]("external-schemata-dirs", "Directories holding external schemas")
-    lazy val removeAvroRemoteExceptions = SettingKey[Boolean]("remove-avro-remote-exceptions", "Whether to remove AvroRemoteException's in interfaces");
+    lazy val removeAvroRemoteExceptions = SettingKey[Boolean]("remove-avro-remote-exceptions", "Whether to remove AvroRemoteException's in interfaces")
+    lazy val extraSchemaClasses = SettingKey[Seq[String]]("extra-schema-classes", "Extra Java classes generated from Avro schemas that are used as dependencies");
   }
 
   private def mkTargetDirectory = Def.task {
@@ -90,11 +96,12 @@ object SbtAvro extends AutoPlugin {
       schemataDirectories.value.map(schemata => {
         val source = schemata
         val processor = new SchemaProcessor(
-          JavaConversions.asJavaList((source ** "*.avsc").get),
-          JavaConversions.asJavaList(externalSchemas),
-          JavaConversions.asJavaList((source ** "*.avpr").get),
-          JavaConversions.asJavaList((source ** "*.avdl").get),
-          stringType.value);
+          JavaConversions.seqAsJavaList((source ** "*.avsc").get),
+          JavaConversions.seqAsJavaList(externalSchemas),
+          JavaConversions.seqAsJavaList((source ** "*.avpr").get),
+          JavaConversions.seqAsJavaList((source ** "*.avdl").get),
+          stringType.value,
+          JavaConversions.seqAsJavaList(extraSchemaClasses.value));
         val parseResult = processor.parse()
 
         val schemas = parseResult.getSchemas()

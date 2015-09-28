@@ -20,8 +20,11 @@
 
 package org.apache.avro;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -42,9 +45,11 @@ import org.apache.avro.compiler.idl.NameTrackingIdl;
 import org.apache.avro.compiler.idl.NameTrackingIdl.NameTrackingMap;
 import org.apache.avro.compiler.idl.ParseException;
 import org.apache.avro.generic.GenericData.StringType;
+import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.node.ArrayNode;
+import org.codehaus.jackson.node.ObjectNode;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableSet;
@@ -66,8 +71,7 @@ public class SchemaProcessor {
         if (!entry.getValue()) {
           if (value != null && value) {
             if (result == -1) {
-              throw new RuntimeException("These two files mutually depend on each other: " + file1
-                  + " and " + file2);
+              throw new RuntimeException("These two files mutually depend on each other: " + file1 + " and " + file2);
             } else {
               result = 1;
             }
@@ -75,8 +79,7 @@ public class SchemaProcessor {
         } else if (entry.getValue()) {
           if (value != null && !value) {
             if (result == 1) {
-              throw new RuntimeException("These two files mutually depend on each other: " + file1
-                  + " and " + file2);
+              throw new RuntimeException("These two files mutually depend on each other: " + file1 + " and " + file2);
             } else {
               result = -1;
             }
@@ -128,6 +131,8 @@ public class SchemaProcessor {
 
   private final List<File> dependencyOrder = new ArrayList<>();
 
+  private List<Schema> extraSchemas = new ArrayList<>();
+
   private final Set<File> idlFiles;
 
   private final Map<File, Map<String, Boolean>> names = new HashMap<>();
@@ -138,12 +143,13 @@ public class SchemaProcessor {
 
   private StringType stringType;
 
-  public SchemaProcessor(List<File> schemaFiles, List<File> externalSchemas,
-      List<File> protocolFiles, List<File> idlFiles, StringType stringType) throws IOException {
+  public SchemaProcessor(List<File> schemaFiles, List<File> externalSchemas, List<File> protocolFiles,
+      List<File> idlFiles, StringType stringType, List<String> extraSchemaClasses) throws IOException {
     this.schemaFiles = new HashSet<>(schemaFiles);
     this.protocolFiles = new HashSet<>(protocolFiles);
     this.idlFiles = new HashSet<>(idlFiles);
     this.stringType = stringType;
+    addExtraSchemas(extraSchemaClasses);
     parseSchemaFiles(schemaFiles);
     parseSchemaFiles(externalSchemas);
     parseProtocolFiles(protocolFiles);
@@ -174,6 +180,7 @@ public class SchemaProcessor {
         protocol.setTypes(types.values());
         JsonParser jsonParser = Schema.FACTORY.createJsonParser(file);
         JsonNode json = Schema.MAPPER.readTree(jsonParser);
+        processImports(json, null, types);
 
         try {
           PROTOCOL_PARSE_METHOD.invoke(protocol, json);
@@ -192,6 +199,7 @@ public class SchemaProcessor {
         NameTrackingIdl idl = new NameTrackingIdl(file);
         NameTrackingMap names = idl.getNames();
         names.putAll(types);
+        addExtraSchemasToIdl(idl);
 
         Protocol protocol;
         try {
@@ -208,7 +216,16 @@ public class SchemaProcessor {
           collectSchemas(type, types);
         }
       } else {
-        Schema schema = parser.parse(file);
+        JsonParser jsonParser = Schema.FACTORY.createJsonParser(file);
+        JsonNode json = Schema.MAPPER.readTree(jsonParser);
+        processImports(json, null, types);
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        JsonGenerator jsonGenerator = Schema.FACTORY.createJsonGenerator(outputStream);
+        Schema.MAPPER.writeTree(jsonGenerator, json);
+
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(outputStream.toByteArray());
+        Schema schema = parser.parse(inputStream);
         addStringProperties(schema);
         collectSchemas(schema, types);
         if (schemaFiles.contains(file)) {
@@ -217,6 +234,27 @@ public class SchemaProcessor {
       }
     }
     return new ParseResult(schemas, protocols);
+  }
+
+  private void addExtraSchemas(List<String> extraSchemaClasses) throws IOException {
+    ClassLoader classLoader = SchemaProcessor.class.getClassLoader();
+    for (String extraSchemaClass : extraSchemaClasses) {
+      try {
+        Class<?> clazz = classLoader.loadClass(extraSchemaClass);
+        Field field = clazz.getField("SCHEMA$");
+        Schema schema = (Schema) field.get(null);
+        extraSchemas.add(schema);
+      } catch (Exception e) {
+        throw new IOException("Unable to load extra schema class " + extraSchemaClass);
+      }
+    }
+  }
+
+  private void addExtraSchemasToIdl(NameTrackingIdl idl) {
+    NameTrackingMap nameMap = idl.getNames();
+    for (Schema extraSchema : extraSchemas) {
+      nameMap.put(extraSchema.getFullName(), extraSchema);
+    }
   }
 
   private void addStringProperties(Protocol protocol) {
@@ -258,16 +296,23 @@ public class SchemaProcessor {
       recordName(nameStates, schema.getTextValue(), namespace, false);
     } else if (schema.isObject()) {
       String type = getText(schema, "type");
-      if ("record".equals(type) || "error".equals(type) || "enum".equals(type)
-          || "fixed".equals(type)) {
+      if ("record".equals(type) || "error".equals(type) || "enum".equals(type) || "fixed".equals(type)) {
         String newNamespace = getText(schema, "namespace");
         if (newNamespace != null) {
           namespace = newNamespace;
         }
+
         String name = getText(schema, "name");
         int lastDotIndex = name.lastIndexOf('.');
         if (lastDotIndex >= 0) {
           namespace = name.substring(0, lastDotIndex);
+        }
+
+        ArrayNode imports = (ArrayNode) schema.get("imports");
+        if (imports != null) {
+          for (Iterator<JsonNode> importNodes = imports.getElements(); importNodes.hasNext();) {
+            recordName(nameStates, importNodes.next().getTextValue(), namespace, false);
+          }
         }
 
         Boolean defined = null;
@@ -282,7 +327,7 @@ public class SchemaProcessor {
           }
         } else if ("enum".equals(type)) {
           defined = schema.get("symbols") != null;
-        } else if ("fixed".equals("symbols")) {
+        } else if ("fixed".equals(type)) {
           defined = true;
         }
         recordName(nameStates, name, namespace, defined);
@@ -385,13 +430,20 @@ public class SchemaProcessor {
       }
       files.remove(nextFile);
       dependencies.removeAll(nextFile);
-      for (Iterator<Entry<File, File>> iterator = dependencies.entries().iterator();
-          iterator.hasNext();) {
+      for (Iterator<Entry<File, File>> iterator = dependencies.entries().iterator(); iterator.hasNext();) {
         if (nextFile.equals(iterator.next().getValue())) {
           iterator.remove();
         }
       }
       dependencyOrder.add(nextFile);
+    }
+  }
+
+  private String getFullName(String name, String namespace) {
+    if (name.indexOf('.') >= 0 || namespace == null) {
+      return name;
+    } else {
+      return namespace + "." + name;
     }
   }
 
@@ -403,6 +455,8 @@ public class SchemaProcessor {
   private void parseIdlFiles(List<File> idlFiles) throws IOException {
     for (File idlFile : idlFiles) {
       NameTrackingIdl idl = new NameTrackingIdl(idlFile);
+      addExtraSchemasToIdl(idl);
+
       try {
         idl.CompilationUnit();
       } catch (ParseException e) {
@@ -445,21 +499,88 @@ public class SchemaProcessor {
     }
   }
 
-  private void recordName(Map<String, Boolean> nameStates, String name, String namespace,
-      Boolean defined) {
+  private void processImports(JsonNode schema, String namespace, Map<String, Schema> types) throws IOException {
+    if (schema.isObject()) {
+      String type = getText(schema, "type");
+      if ("record".equals(type) || "error".equals(type)) {
+        String newNamespace = getText(schema, "namespace");
+        if (newNamespace != null) {
+          namespace = newNamespace;
+        }
+
+        String name = getText(schema, "name");
+        int lastDotIndex = name.lastIndexOf('.');
+        if (lastDotIndex >= 0) {
+          namespace = name.substring(0, lastDotIndex);
+        }
+
+        String fullName = getFullName(name, namespace);
+
+        JsonNode imports = schema.get("imports");
+        if (imports != null) {
+          for (JsonNode importNode : imports) {
+            String importedSchemaName = getFullName(importNode.getTextValue(), namespace);
+            Schema importedSchema = types.get(importedSchemaName);
+            if (importedSchema == null) {
+              throw new IOException("Unable to load imported schema " + importedSchemaName);
+            }
+            JsonNode importedSchemaNode = schemaToJson(importedSchema);
+            String importedSchemaType = getText(importedSchemaNode, "type");
+
+            if ("record".equals(importedSchemaType) || "error".equals(importedSchemaType)) {
+              ArrayNode fieldsNode = (ArrayNode) schema.get("fields");
+              if (fieldsNode == null) {
+                fieldsNode = Schema.MAPPER.createArrayNode();
+                ((ObjectNode) schema).put("fields", fieldsNode);
+              }
+
+              JsonNode importedFields = importedSchemaNode.get("fields");
+              if (importedFields != null) {
+                int i = 0;
+                for (JsonNode importedField : importedFields) {
+                  fieldsNode.insert(i++, importedField);
+                }
+              }
+            } else {
+              throw new IOException("Cannot import schema " + importedSchemaName + " of type " + importedSchemaType
+                  + " into " + fullName + " of type " + type);
+            }
+          }
+        }
+
+        JsonNode fieldsNode = schema.get("fields");
+        if (fieldsNode != null) {
+          for (JsonNode field : fieldsNode) {
+            JsonNode fieldTypeNode = field.get("type");
+            processImports(fieldTypeNode, namespace, types);
+          }
+        }
+      } else if ("array".equals(type)) {
+        processImports(schema.get("items"), namespace, types);
+      } else if ("map".equals(type)) {
+        processImports(schema.get("values"), namespace, types);
+      }
+    } else if (schema.isArray()) {
+      for (JsonNode typeNode : schema) {
+        processImports(typeNode, namespace, types);
+      }
+    }
+  }
+
+  private void recordName(Map<String, Boolean> nameStates, String name, String namespace, Boolean defined) {
     if (defined != null) {
       if (!PREDEFINED_TYPES.contains(name)) {
-        String fullName;
-        if (name.indexOf('.') >= 0 || namespace == null) {
-          fullName = name;
-        } else {
-          fullName = namespace + "." + name;
-        }
+        String fullName = getFullName(name, namespace);
         Boolean value = nameStates.get(fullName);
         if (value == null || !value && defined) {
           nameStates.put(fullName, defined);
         }
       }
     }
+  }
+
+  private JsonNode schemaToJson(Schema schema) throws IOException {
+    JsonParser jsonParser = Schema.FACTORY.createJsonParser(schema.toString());
+    return jsonParser.readValueAsTree();
   }
 }
