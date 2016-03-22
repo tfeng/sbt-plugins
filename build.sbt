@@ -6,6 +6,6 @@ Settings.common ++ Settings.disablePublishing
 
 lazy val parent = project in file(".") aggregate(avro, dust)
 
-lazy val avro = project in file("avro-plugin")
+lazy val avro = project
 
-lazy val dust = project in file("dust-plugin")
+lazy val dust = project
