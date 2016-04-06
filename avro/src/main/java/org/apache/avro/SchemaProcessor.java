@@ -50,6 +50,7 @@ import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.ObjectNode;
+import org.codehaus.jackson.node.TextNode;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableSet;
@@ -173,7 +174,6 @@ public class SchemaProcessor {
     Map<File, Schema> schemas = new HashMap<>(schemaFiles.size());
     Map<File, Protocol> protocols = new HashMap<>(protocolFiles.size() + idlFiles.size());
     Map<String, Schema> types = new HashMap<>();
-    Parser parser = new Parser();
     for (File file : dependencyOrder) {
       if (protocolFiles.contains(file)) {
         Protocol protocol = new Protocol(null, null);
@@ -225,6 +225,8 @@ public class SchemaProcessor {
         Schema.MAPPER.writeTree(jsonGenerator, json);
 
         ByteArrayInputStream inputStream = new ByteArrayInputStream(outputStream.toByteArray());
+        Parser parser = new Parser();
+        parser.addTypes(types);
         Schema schema = parser.parse(inputStream);
         addStringProperties(schema);
         collectSchemas(schema, types);
@@ -525,6 +527,7 @@ public class SchemaProcessor {
               throw new IOException("Unable to load imported schema " + importedSchemaName);
             }
             JsonNode importedSchemaNode = schemaToJson(importedSchema);
+            removeTypeDefinitions(importedSchemaNode);
             String importedSchemaType = getText(importedSchemaNode, "type");
 
             if ("record".equals(importedSchemaType) || "error".equals(importedSchemaType)) {
@@ -576,6 +579,49 @@ public class SchemaProcessor {
           nameStates.put(fullName, defined);
         }
       }
+    }
+  }
+
+  private void removeTypeDefinitions(JsonNode schema) {
+    if (schema == null) {
+      return;
+    }
+    String type = getText(schema, "type");
+    if ("record".equals(type) || "error".equals(type)) {
+      ArrayNode fieldsNode = (ArrayNode) schema.get("fields");
+      if (fieldsNode != null) {
+        for (JsonNode fieldNode : fieldsNode) {
+          JsonNode fieldTypeNode = fieldNode.get("type");
+          if (fieldTypeNode.isObject()) {
+            String fieldType = getText(fieldTypeNode, "name");
+            if (fieldType != null) {
+              ((ObjectNode) fieldNode).put("type", new TextNode(fieldType));
+              continue;
+            }
+          }
+          removeTypeDefinitions(fieldTypeNode);
+        }
+      }
+    } else if ("array".equals(type)) {
+      JsonNode itemsNode = schema.get("items");
+      if (itemsNode != null) {
+        String itemType = getText(itemsNode, "name");
+        if (itemType != null) {
+          ((ObjectNode) schema).put("items", new TextNode(itemType));
+          return;
+        }
+      }
+      removeTypeDefinitions(itemsNode);
+    } else if ("map".equals(type)) {
+      JsonNode valuesNode = schema.get("values");
+      if (valuesNode != null) {
+        String valueType = getText(valuesNode, "name");
+        if (valueType != null) {
+          ((ObjectNode) schema).put("values", new TextNode(valueType));
+          return;
+        }
+      }
+      removeTypeDefinitions(valuesNode);
     }
   }
 
