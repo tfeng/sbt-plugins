@@ -2,7 +2,7 @@ package me.tfeng.sbt.plugins
 
 object Versions {
 
-  val project = "0.8.3"
+  val project = "0.8.4-SNAPSHOT"
 
   val avro = "1.8.0"
 
@@ -12,5 +12,5 @@ object Versions {
 
   val scala = "2.10.6"
 
-  val webjarsLocator = "0.30"
+  val webjarsLocator = "0.31"
 }
