@@ -2,9 +2,9 @@ package me.tfeng.sbt.plugins
 
 object Versions {
 
-  val project = "0.8.4"
+  val project = "0.8.5-SNAPSHOT"
 
-  val avro = "1.8.0"
+  val avro = "1.8.1"
 
   val dustjs = "2.7.2"
 
