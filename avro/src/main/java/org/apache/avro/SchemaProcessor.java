@@ -527,7 +527,7 @@ public class SchemaProcessor {
               throw new IOException("Unable to load imported schema " + importedSchemaName);
             }
             JsonNode importedSchemaNode = schemaToJson(importedSchema);
-            removeTypeDefinitions(importedSchemaNode);
+            removeTypeDefinitions(null, importedSchemaNode);
             String importedSchemaType = getText(importedSchemaNode, "type");
 
             if ("record".equals(importedSchemaType) || "error".equals(importedSchemaType)) {
@@ -582,12 +582,14 @@ public class SchemaProcessor {
     }
   }
 
-  private void removeTypeDefinitions(JsonNode schema) {
+  private void removeTypeDefinitions(String namespace, JsonNode schema) {
     if (schema == null) {
       return;
     }
     String type = getText(schema, "type");
     if ("record".equals(type) || "error".equals(type)) {
+      TextNode namespaceNode = (TextNode) schema.get("namespace");
+      String newNamespace = namespaceNode == null ? namespace : namespaceNode.getTextValue();
       ArrayNode fieldsNode = (ArrayNode) schema.get("fields");
       if (fieldsNode != null) {
         for (JsonNode fieldNode : fieldsNode) {
@@ -595,11 +597,11 @@ public class SchemaProcessor {
           if (fieldTypeNode.isObject()) {
             String fieldType = getText(fieldTypeNode, "name");
             if (fieldType != null) {
-              ((ObjectNode) fieldNode).put("type", new TextNode(fieldType));
+              ((ObjectNode) fieldNode).put("type", new TextNode(getFullName(fieldType, newNamespace)));
               continue;
             }
           }
-          removeTypeDefinitions(fieldTypeNode);
+          removeTypeDefinitions(newNamespace, fieldTypeNode);
         }
       }
     } else if ("array".equals(type)) {
@@ -611,7 +613,7 @@ public class SchemaProcessor {
           return;
         }
       }
-      removeTypeDefinitions(itemsNode);
+      removeTypeDefinitions(namespace, itemsNode);
     } else if ("map".equals(type)) {
       JsonNode valuesNode = schema.get("values");
       if (valuesNode != null) {
@@ -621,7 +623,7 @@ public class SchemaProcessor {
           return;
         }
       }
-      removeTypeDefinitions(valuesNode);
+      removeTypeDefinitions(namespace, valuesNode);
     }
   }
 
