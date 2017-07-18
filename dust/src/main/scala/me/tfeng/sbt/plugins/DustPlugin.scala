@@ -41,8 +41,8 @@ object Dust extends AutoPlugin {
   lazy val settings = inConfig(Compile)(Seq(
       engine := Engine.Nashorn,
       templatesDirectories := Seq("templates"),
-      dustToJs <<= dustToJsTask,
-      resourceGenerators <+= dustToJs,
+      dustToJs := dustToJsTask.value,
+      resourceGenerators += dustToJs.taskValue,
       mappings in packageBin ++= createWebJarMappings.value,
       unmanagedSourceDirectories ++= templatesDirectories.value.map(templates => baseDirectory.value / templates)
   ))

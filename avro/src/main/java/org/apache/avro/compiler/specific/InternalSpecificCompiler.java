@@ -37,15 +37,7 @@ import org.apache.avro.Schema;
  */
 public class InternalSpecificCompiler extends SpecificCompiler {
 
-  protected static class OutputFile extends SpecificCompiler.OutputFile {
-
-    public static OutputFile ensureOutputFile(SpecificCompiler.OutputFile outputFile) {
-      if (outputFile instanceof OutputFile) {
-        return (OutputFile) outputFile;
-      } else {
-        return new OutputFile(outputFile);
-      }
-    }
+  protected class OutputFile extends SpecificCompiler.OutputFile {
 
     private List<OutputFile> dependentFiles = new ArrayList<>();
 
@@ -98,11 +90,15 @@ public class InternalSpecificCompiler extends SpecificCompiler {
 
   private static final Pattern AVRO_REMOTE_EXCEPTION_PATTERN =
       Pattern.compile("throws org.apache.avro.AvroRemoteException\\s*(;|,\\s*)");
+
   private Set<String> definedNames;
+
   private List<String> paths = new ArrayList<>();
+
   private Protocol protocol;
 
   private final boolean removeAvroRemoteExceptions;
+
   private Schema schema;
 
   public InternalSpecificCompiler(Protocol protocol, boolean removeAvroRemoteExceptions) {
@@ -115,6 +111,14 @@ public class InternalSpecificCompiler extends SpecificCompiler {
     super(schema);
     this.schema = schema;
     this.removeAvroRemoteExceptions = false;
+  }
+
+  public OutputFile ensureOutputFile(SpecificCompiler.OutputFile outputFile) {
+    if (outputFile instanceof OutputFile) {
+      return (OutputFile) outputFile;
+    } else {
+      return new OutputFile(outputFile);
+    }
   }
 
   public List<File> getFiles(File destinationDirectory) {
@@ -171,11 +175,11 @@ public class InternalSpecificCompiler extends SpecificCompiler {
   protected OutputFile compileInterfaceInternal(Protocol protocol) {
     SpecificCompiler.OutputFile outputFile = super.compileInterface(protocol);
     outputFile.contents = rewriteContents(outputFile.contents);
-    return OutputFile.ensureOutputFile(outputFile);
+    return ensureOutputFile(outputFile);
   }
 
   protected OutputFile compileSchemaInternal(Schema schema) {
-    return OutputFile.ensureOutputFile(super.compile(schema));
+    return ensureOutputFile(super.compile(schema));
   }
 
   protected String rewriteContents(String contents) {

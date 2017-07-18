@@ -55,7 +55,7 @@ object Avro extends AutoPlugin {
       schemataDirectories := Seq(baseDirectory.value / "schemata"),
       targetSchemataDirectory := baseDirectory.value / "codegen",
       mappings in packageSrc ++= createSourceMappings.value,
-      packageSrc <<= packageSrc dependsOn (compileTask),
+      packageSrc := (packageSrc dependsOn (compileTask)).value,
       sourceGenerators ++= Seq(mkTargetDirectory.taskValue, compileTask.taskValue),
       unmanagedSourceDirectories ++=
         schemataDirectories.value ++
