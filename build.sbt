@@ -4,8 +4,6 @@ name := "parent"
 
 Settings.common ++ Settings.disablePublishing
 
-lazy val parent = project in file(".") aggregate(avro, dust)
+lazy val parent = project in file(".") aggregate(avro)
 
 lazy val avro = project
-
-lazy val dust = project

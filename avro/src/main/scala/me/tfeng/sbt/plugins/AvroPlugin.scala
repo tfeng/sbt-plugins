@@ -26,11 +26,12 @@ import java.nio.charset.Charset
 import org.apache.avro.SchemaProcessor
 import org.apache.avro.compiler.specific.{InternalSpecificCompiler, ProtocolClientGenerator}
 import org.apache.avro.generic.GenericData.StringType
-import sbt.Keys.{baseDirectory, cleanFiles, libraryDependencies, mappings, packageSrc, sourceGenerators, streams, unmanagedSourceDirectories}
+import sbt.Keys._
+import sbt.Path.rebase
 import sbt.Project.inConfig
-import sbt.{AutoPlugin, Compile, Def, IO, SettingKey, Test, filesToFinder, globFilter, rebase, richFile, singleFileFinder, toGroupID}
+import sbt._
 
-import scala.collection.JavaConversions
+import scala.collection.JavaConversions._
 import scala.collection.mutable.Buffer
 
 /**
@@ -80,6 +81,12 @@ object Avro extends AutoPlugin {
       val destination = targetSchemataDirectory.value
       val files = Buffer[File]()
       val externalSchemas = Buffer[File]()
+      val stringTypeValue = stringType.value
+      val streamsValue = streams.value
+      val baseDirectoryValue = baseDirectory.value
+      val extraSchemaClassesValue = extraSchemaClasses.value
+      val removeAvroRemoteExceptionsValue = removeAvroRemoteExceptions.value
+
       externalSchemaDirectories.value.foreach(directory => {
         externalSchemas ++= (directory ** "*.avsc").get
       })
@@ -87,16 +94,16 @@ object Avro extends AutoPlugin {
       schemataDirectories.value.map(schemata => {
         val source = schemata
         val processor = new SchemaProcessor(
-          JavaConversions.seqAsJavaList((source ** "*.avsc").get),
-          JavaConversions.seqAsJavaList(externalSchemas),
-          JavaConversions.seqAsJavaList((source ** "*.avpr").get),
-          JavaConversions.seqAsJavaList((source ** "*.avdl").get),
-          stringType.value,
-          JavaConversions.seqAsJavaList(extraSchemaClasses.value));
+          seqAsJavaList((source ** "*.avsc").get),
+          seqAsJavaList(externalSchemas),
+          seqAsJavaList((source ** "*.avpr").get),
+          seqAsJavaList((source ** "*.avdl").get),
+          stringTypeValue,
+          seqAsJavaList(extraSchemaClassesValue));
         val parseResult = processor.parse()
 
         val schemas = parseResult.getSchemas()
-        val schemaFiles = JavaConversions.asScalaSet(schemas.entrySet())
+        val schemaFiles = asScalaSet(schemas.entrySet())
         schemaFiles.foreach(entry => {
           val file = entry.getKey()
           val schema = entry.getValue()
@@ -105,15 +112,15 @@ object Avro extends AutoPlugin {
           compiler.setDefinedNames(definedNames)
           val output = compiler.getOutputFile(destination)
           if (!output.exists() || output.lastModified() < file.lastModified()) {
-            streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+            streamsValue.log.info("Compiling " + file.relativeTo(baseDirectoryValue).get)
           }
-          compiler.setStringType(stringType.value)
+          compiler.setStringType(stringTypeValue)
           compiler.compileToDestination(file, destination)
-          files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+          files ++= asScalaBuffer(compiler.getFiles(destination))
         })
 
         val protocols = parseResult.getProtocols()
-        val protocolFiles = JavaConversions.asScalaSet(protocols.entrySet())
+        val protocolFiles = asScalaSet(protocols.entrySet())
         protocolFiles.foreach(entry => {
           val file = entry.getKey()
           val protocol = entry.getValue()
@@ -123,17 +130,17 @@ object Avro extends AutoPlugin {
             IO.write(protocolFile, protocol.toString(true), Charset.forName("utf8"), false)
           }
           val definedNames = processor.definedNames(file)
-          val compiler = new InternalSpecificCompiler(protocol, removeAvroRemoteExceptions.value)
+          val compiler = new InternalSpecificCompiler(protocol, removeAvroRemoteExceptionsValue)
           compiler.setDefinedNames(definedNames)
           val output = compiler.getOutputFile(destination)
           if (!output.exists() || output.lastModified() < file.lastModified()) {
-            streams.value.log.info("Compiling " + file.relativeTo(baseDirectory.value).get)
+            streamsValue.log.info("Compiling " + file.relativeTo(baseDirectoryValue).get)
           }
-          compiler.setStringType(stringType.value)
+          compiler.setStringType(stringTypeValue)
           compiler.compileToDestination(file, destination)
-          files ++= JavaConversions.asScalaBuffer(compiler.getFiles(destination))
+          files ++= asScalaBuffer(compiler.getFiles(destination))
           val generator = new ProtocolClientGenerator(protocol, destination)
-          generator.setStringType(stringType.value)
+          generator.setStringType(stringTypeValue)
           files += generator.generate()
         })
       })
